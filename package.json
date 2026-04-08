@@ -1,0 +1,14 @@
+{
+  "name": "property-management-system",
+  "version": "1.0.0",
+  "description": "Full-stack Property Management System",
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "start:backend": "npm --prefix backend start",
+    "start:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev"
+  },
+  "author": "",
+  "license": "ISC"
+}
