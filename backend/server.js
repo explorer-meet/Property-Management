@@ -7,19 +7,26 @@ const propertyRoutes = require("./routes/propertyRoutes");
 
 const app = express();
 
+const normalizeOrigin = (value) => (value || "").trim().replace(/\/$/, "");
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
+  "https://property-management-gamma-six.vercel.app",
   process.env.CLIENT_URL,
   process.env.CORS_ORIGIN,
-].filter(Boolean);
+]
+  .map(normalizeOrigin)
+  .filter(Boolean);
 
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
-  if (allowedOrigins.includes(origin)) return true;
+
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (allowedOrigins.includes(normalizedOrigin)) return true;
 
   // Allow Vercel preview and production domains.
-  if (/^https:\/\/[a-zA-Z0-9-]+\.vercel\.app$/.test(origin)) return true;
+  if (/^https:\/\/[a-zA-Z0-9-]+\.vercel\.app$/.test(normalizedOrigin)) return true;
 
   return false;
 };
@@ -29,7 +36,10 @@ app.use(cors({
     if (isAllowedOrigin(origin)) return callback(null, true);
     return callback(new Error("Not allowed by CORS"));
   },
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
+  optionsSuccessStatus: 204,
 }));
 
 app.use(express.json());
