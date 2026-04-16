@@ -3,17 +3,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import toast from "react-hot-toast";
 import {
-  Building2, Eye, EyeOff, ArrowLeft, CheckCircle2,
+  Building2, Eye, EyeOff, CheckCircle2,
   BarChart3, Shield, Bell,
 } from "lucide-react";
 import api from "../../utils/api";
 import { setCredentials } from "../../app/slices/authSlice";
 
 const PERKS = [
-  { icon: BarChart3, text: "Visual rent & occupancy analytics" },
-  { icon: Bell,      text: "Instant maintenance notifications" },
-  { icon: Shield,    text: "Secure role-based access control" },
-  { icon: CheckCircle2, text: "Free forever — no hidden fees" },
+  { icon: BarChart3, text: "Rent and occupancy insights" },
+  { icon: Bell, text: "Maintenance notifications" },
+  { icon: Shield, text: "Secure role-based access" },
 ];
 
 const COUNTRY_CODES = [
@@ -105,210 +104,236 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="h-screen bg-[linear-gradient(135deg,#ecfeff_0%,#f8fafc_45%,#eef2ff_100%)] lg:grid lg:grid-cols-[0.92fr_1.08fr] overflow-hidden">
+      <div className="relative hidden lg:flex flex-col justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_32%),linear-gradient(150deg,#082f49_0%,#0f766e_56%,#1d4ed8_100%)] px-10 py-10 xl:px-12">
+        <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.07)_1px,transparent_1px)] bg-[size:24px_24px] opacity-70" />
+        <div className="absolute -top-20 right-0 h-56 w-56 rounded-full bg-cyan-300/18 blur-3xl" />
+        <div className="absolute bottom-0 left-0 h-52 w-52 -translate-x-1/3 translate-y-1/3 rounded-full bg-blue-300/18 blur-3xl" />
 
-      {/* ── LEFT PANEL ── */}
-      <div className="hidden lg:flex lg:w-5/12 flex-col justify-between bg-gradient-to-br from-indigo-700 via-purple-800 to-blue-900 p-12 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-72 h-72 bg-purple-400/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-56 h-56 bg-blue-400/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl pointer-events-none" />
-
-        <div className="relative">
-          <Link to="/" className="inline-flex items-center gap-2.5 group">
-            <div className="p-2 bg-white/20 rounded-xl group-hover:bg-white/30 transition-colors">
-              <Building2 size={24} className="text-white" />
+        <div className="relative max-w-md">
+          <Link to="/" className="inline-flex items-center gap-3 group">
+            <div className="p-2 rounded-2xl bg-white/15 border border-white/20 group-hover:bg-white/20 transition-colors">
+              <Building2 size={22} className="text-white" />
             </div>
-            <span className="text-white font-bold text-xl">PropManager</span>
+            <div>
+              <p className="text-white font-extrabold text-lg tracking-tight">PropManager</p>
+              <p className="text-cyan-100/75 text-[11px] uppercase tracking-[0.2em]">Fast onboarding</p>
+            </div>
           </Link>
-        </div>
 
-        <div className="relative space-y-8">
-          <div>
-            <h2 className="text-4xl font-extrabold text-white leading-tight">
-              Join thousands of<br />property owners.
-            </h2>
-            <p className="text-purple-200 mt-3 text-base leading-relaxed max-w-sm">
-              Create your free account and start managing properties, tenants and rent in minutes.
-            </p>
-          </div>
-          <ul className="space-y-4">
+          <h1 className="mt-8 text-3xl font-black leading-tight text-white xl:text-4xl">
+            Create your account and get started quickly.
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-cyan-50/85">
+            Owners and tenants get secure access to listings, leases, rent, and maintenance workflows.
+          </p>
+
+          <ul className="mt-8 grid gap-3">
             {PERKS.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-white/15 rounded-lg flex items-center justify-center shrink-0">
-                  <Icon size={16} className="text-purple-300" />
-                </div>
-                <span className="text-purple-100 text-sm">{text}</span>
+              <li key={text} className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-3.5 py-3 text-sm text-cyan-50/90 backdrop-blur-sm">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/15 bg-white/10">
+                  <Icon size={15} className="text-cyan-100" />
+                </span>
+                {text}
               </li>
             ))}
           </ul>
-        </div>
 
-        <div className="relative grid grid-cols-2 gap-3">
-          {[
-            { value: "1,200+", label: "Properties" },
-            { value: "850+",   label: "Tenants" },
-            { value: "98%",    label: "Rent On-Time" },
-            { value: "Free",   label: "Forever" },
-          ].map((s) => (
-            <div key={s.label} className="bg-white/10 rounded-xl p-3 border border-white/15 text-center">
-              <p className="text-white font-extrabold text-lg">{s.value}</p>
-              <p className="text-purple-300 text-xs">{s.label}</p>
-            </div>
-          ))}
+          <div className="mt-8 rounded-[24px] border border-white/15 bg-white/10 p-4 backdrop-blur-md">
+            <p className="text-sm italic leading-6 text-cyan-50/90">
+              &ldquo;The setup is simple and the dashboard is clear from day one.&rdquo;
+            </p>
+            <p className="mt-3 text-xs font-semibold text-cyan-100/80">New PropManager user</p>
+          </div>
         </div>
       </div>
 
-      {/* ── RIGHT PANEL ── */}
-      <div className="flex-1 flex flex-col justify-center items-center px-6 py-10 bg-white overflow-y-auto">
-        <div className="w-full max-w-md mb-6">
-          <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors">
-            <ArrowLeft size={15} /> Back to home
-          </Link>
-        </div>
+      <div className="relative flex items-center justify-center px-5 py-4 sm:px-8 lg:px-10 h-full overflow-y-auto">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.10),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.08),transparent_28%)]" />
 
-        <div className="lg:hidden flex flex-col items-center mb-6">
-          <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg">
-            <Building2 size={28} className="text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">PropManager</h1>
-        </div>
-
-        <div className="w-full max-w-md">
-          <div className="mb-7">
-            <h2 className="text-3xl font-extrabold text-gray-900">Create your account</h2>
-            <p className="text-gray-500 mt-2 text-sm">Free to get started. No credit card required.</p>
+        <div className="relative w-full max-w-3xl">
+          <div className="mb-4 flex items-center justify-end">
+            <div className="lg:hidden inline-flex items-center gap-2 rounded-full border border-cyan-100 bg-white/85 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-700 shadow-sm">
+              <Shield size={12} /> Guided
+            </div>
           </div>
 
-          {/* Role selector */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {[
-              { value: "owner",  label: "Property Owner", sub: "Manage properties" },
-              { value: "tenant", label: "Tenant",         sub: "View my lease" },
-            ].map((r) => (
-              <button
-                key={r.value}
-                type="button"
-                onClick={() => setForm({ ...form, role: r.value })}
-                className={`p-3 rounded-xl border-2 text-left transition-all duration-200 ${
-                  form.role === r.value
-                    ? "border-blue-600 bg-blue-50"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <p className={`text-sm font-semibold ${form.role === r.value ? "text-blue-700" : "text-gray-700"}`}>{r.label}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{r.sub}</p>
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">First Name</label>
-                <input type="text" name="firstName" value={form.firstName} onChange={handleChange} required placeholder="John" className="input-field" />
+          <div className="lg:hidden mb-4 overflow-hidden rounded-[24px] bg-[linear-gradient(150deg,#082f49_0%,#0f766e_56%,#1d4ed8_100%)] p-4 shadow-[0_16px_36px_rgba(8,47,73,0.18)]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-white">
+                <Building2 size={22} />
               </div>
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Middle Name</label>
-                <input type="text" name="middleName" value={form.middleName} onChange={handleChange} placeholder="A." className="input-field" />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Last Name</label>
-                <input type="text" name="lastName" value={form.lastName} onChange={handleChange} required placeholder="Doe" className="input-field" />
+              <div>
+                <p className="text-lg font-black text-white">PropManager</p>
+                <p className="text-xs text-cyan-100/80">Create your account in minutes</p>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email address</label>
-              <input type="email" name="email" value={form.email} onChange={handleChange} required placeholder="you@example.com" className="input-field" />
+          </div>
+
+          <div className="rounded-[28px] border border-white/70 bg-white/88 p-5 shadow-[0_22px_56px_rgba(8,47,73,0.10)] backdrop-blur-xl sm:p-6">
+            <div className="mb-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-700">Get started</p>
+              <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-900 sm:text-[30px]">Create your account</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">Fill in your details and start using the platform.</p>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Mobile Number</label>
-              <div className="grid grid-cols-[130px_1fr] gap-2">
-                <select
-                  name="countryCode"
-                  value={form.countryCode}
-                  onChange={handleChange}
-                  className="input-field"
+
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              {[
+                { value: "owner", label: "Property Owner", sub: "Manage properties" },
+                { value: "tenant", label: "Tenant", sub: "View lease details" },
+              ].map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, role: r.value })}
+                  className={`rounded-2xl border-2 p-3 text-left transition-all duration-200 ${
+                    form.role === r.value
+                      ? "border-cyan-500 bg-cyan-50 shadow-[0_10px_24px_rgba(6,182,212,0.12)]"
+                      : "border-slate-200 bg-slate-50/70 hover:border-slate-300"
+                  }`}
                 >
-                  {COUNTRY_CODES.map((code) => (
-                    <option key={code.value} value={code.value}>{code.label}</option>
-                  ))}
-                </select>
-                <input
-                  type="tel"
-                  name="phone"
-                  value={form.phone}
-                  onChange={handleChange}
-                  required
-                  placeholder="Mobile number"
-                  className="input-field"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  required
-                  minLength={6}
-                  placeholder="Min 6 characters"
-                  className="input-field pr-10"
-                />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  <p className={`text-sm font-semibold ${form.role === r.value ? "text-cyan-800" : "text-slate-700"}`}>{r.label}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-400">{r.sub}</p>
                 </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Confirm Password</label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="confirmPassword"
-                  value={form.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  minLength={6}
-                  placeholder="Re-enter password"
-                  className="input-field pr-10"
-                />
-                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
+              ))}
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full py-3 text-base font-semibold rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Personal</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">First Name</label>
+                      <input type="text" name="firstName" value={form.firstName} onChange={handleChange} required placeholder="John" className="input-field bg-white/90 py-2.5 text-sm" />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Middle Name</label>
+                      <input type="text" name="middleName" value={form.middleName} onChange={handleChange} placeholder="A." className="input-field bg-white/90 py-2.5 text-sm" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Last Name</label>
+                      <input type="text" name="lastName" value={form.lastName} onChange={handleChange} required placeholder="Doe" className="input-field bg-white/90 py-2.5 text-sm" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Contact</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email address</label>
+                      <input type="email" name="email" value={form.email} onChange={handleChange} required placeholder="you@example.com" className="input-field bg-white/90 py-2.5 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Mobile Number</label>
+                      <div className="grid grid-cols-[130px_1fr] gap-2">
+                        <select
+                          name="countryCode"
+                          value={form.countryCode}
+                          onChange={handleChange}
+                          className="input-field bg-white/90 py-2.5 text-sm"
+                        >
+                          {COUNTRY_CODES.map((code) => (
+                            <option key={code.value} value={code.value}>{code.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="tel"
+                          name="phone"
+                          value={form.phone}
+                          onChange={handleChange}
+                          required
+                          placeholder="Mobile number"
+                          className="input-field bg-white/90 py-2.5 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Security</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Password</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        name="password"
+                        value={form.password}
+                        onChange={handleChange}
+                        required
+                        minLength={6}
+                        placeholder="Min 6 characters"
+                        className="input-field bg-white/90 py-2.5 pr-10 text-sm"
+                      />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Confirm Password</label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        name="confirmPassword"
+                        value={form.confirmPassword}
+                        onChange={handleChange}
+                        required
+                        minLength={6}
+                        placeholder="Re-enter password"
+                        className="input-field bg-white/90 py-2.5 pr-10 text-sm"
+                      />
+                      <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary mt-1 w-full rounded-2xl py-3 text-sm font-semibold transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Creating account...
+                  </span>
+                ) : "Create Account"}
+              </button>
+            </form>
+
+            <div className="relative my-5 flex items-center">
+              <div className="flex-grow border-t border-slate-200" />
+              <span className="bg-white px-4 text-xs text-slate-400">Already have an account?</span>
+              <div className="flex-grow border-t border-slate-200" />
+            </div>
+
+            <Link
+              to="/login"
+              className="flex items-center justify-center w-full rounded-2xl border-2 border-slate-200 bg-slate-50/70 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:border-blue-300 hover:bg-blue-50"
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Creating account...
-                </span>
-              ) : "Create Account"}
-            </button>
-          </form>
+              Sign in instead
+            </Link>
 
-          <div className="relative flex items-center my-5">
-            <div className="flex-grow border-t border-gray-200" />
-            <span className="px-4 text-xs text-gray-400 bg-white">Already have an account?</span>
-            <div className="flex-grow border-t border-gray-200" />
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              {["Fast setup", "Secure access", "No hidden fees"].map((item) => (
+                <div key={item} className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-[11px] font-medium text-slate-500">
+                  <CheckCircle2 size={13} className="text-emerald-500" />
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
-
-          <Link
-            to="/login"
-            className="flex items-center justify-center w-full border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700 font-semibold py-3 rounded-xl transition-all duration-200 text-sm"
-          >
-            Sign in instead
-          </Link>
         </div>
       </div>
     </div>

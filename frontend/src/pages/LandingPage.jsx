@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Building2, Home, Users, DollarSign, Wrench, Shield,
-  BarChart3, Bell, ChevronRight, Star, CheckCircle2,
-  ArrowRight, Menu, X, MapPin, TrendingUp, Clock, Plus, Minus, Search,
+  BarChart3, Bell, ChevronRight, ChevronLeft, Star, CheckCircle2,
+  ArrowRight, Menu, X, MapPin, TrendingUp, Clock,
 } from "lucide-react";
 import { formatCurrencyCompact, formatCurrency } from "../utils/currency";
 import api from "../utils/api";
@@ -107,25 +107,6 @@ const TESTIMONIALS = [
   },
 ];
 
-const FAQ_ITEMS = [
-  {
-    q: "How do I add a property?",
-    a: "Sign in as an owner, open Properties, and create a new property with unit and location details.",
-  },
-  {
-    q: "Can tenants raise maintenance requests?",
-    a: "Yes. Tenants can submit requests from their dashboard and track status updates in real time.",
-  },
-  {
-    q: "Can I track paid and pending rent?",
-    a: "Yes. Rent management shows paid, pending, and overdue statuses for each lease.",
-  },
-  {
-    q: "Is PropManager mobile friendly?",
-    a: "Yes. The app is designed to work across desktop, tablet, and mobile browsers.",
-  },
-];
-
 const getStoredUser = () => {
   try {
     return JSON.parse(localStorage.getItem("pms_user") || "null");
@@ -139,13 +120,45 @@ const LandingPage = () => {
   const [authUser, setAuthUser] = useState(() => getStoredUser());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const [publicProperties, setPublicProperties] = useState([]);
   const [propertyLoading, setPropertyLoading] = useState(true);
-  const [searchCity, setSearchCity] = useState("");
-  const [searchType, setSearchType] = useState("All");
   const [authPromptProperty, setAuthPromptProperty] = useState(null);
   const [submittingInquiryId, setSubmittingInquiryId] = useState("");
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const carouselTimerRef = useRef(null);
+
+  const VISIBLE = 3;
+
+  const vacantProperties = publicProperties.filter((p) => p?.status === "Vacant");
+
+  const startCarouselTimer = useCallback(() => {
+    if (carouselTimerRef.current) clearInterval(carouselTimerRef.current);
+    carouselTimerRef.current = setInterval(() => {
+      setCarouselIndex((prev) => {
+        const max = Math.max(0, vacantProperties.length - VISIBLE);
+        return prev >= max ? 0 : prev + 1;
+      });
+    }, 3500);
+  }, [vacantProperties.length]);
+
+  useEffect(() => {
+    if (vacantProperties.length > VISIBLE) {
+      startCarouselTimer();
+    }
+    return () => { if (carouselTimerRef.current) clearInterval(carouselTimerRef.current); };
+  }, [vacantProperties.length, startCarouselTimer]);
+
+  const carouselPrev = () => {
+    setCarouselIndex((prev) => (prev <= 0 ? Math.max(0, vacantProperties.length - VISIBLE) : prev - 1));
+    startCarouselTimer();
+  };
+  const carouselNext = () => {
+    setCarouselIndex((prev) => {
+      const max = Math.max(0, vacantProperties.length - VISIBLE);
+      return prev >= max ? 0 : prev + 1;
+    });
+    startCarouselTimer();
+  };
 
   const isLoggedIn = Boolean(authUser) && Boolean(localStorage.getItem("pms_token"));
   const dashboardPath = authUser?.role === "owner" ? "/owner/dashboard" : "/tenant/dashboard";
@@ -176,16 +189,6 @@ const LandingPage = () => {
 
     fetchPublicProperties();
   }, []);
-
-  const filteredProperties = publicProperties.filter((property) => {
-    const isVacant = property?.status === "Vacant";
-    if (!isVacant) return false;
-
-    const matchesType = searchType === "All" || property.propertyType === searchType;
-    const location = `${property?.address?.street || ""} ${property?.address?.city || ""} ${property?.address?.state || ""}`.toLowerCase();
-    const matchesCity = !searchCity.trim() || location.includes(searchCity.trim().toLowerCase());
-    return matchesType && matchesCity;
-  });
 
   const handleInterested = async (property) => {
     const token = localStorage.getItem("pms_token");
@@ -455,103 +458,140 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ── BROWSE PROPERTIES ── */}
-      <section id="browse-properties" className="py-24 bg-gradient-to-b from-white to-blue-50/60">
+      {/* ── BROWSE PROPERTIES CAROUSEL ── */}
+      <section id="browse-properties" className="py-24 bg-gradient-to-b from-white to-blue-50/60 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <span className="text-sm font-semibold text-blue-600 uppercase tracking-widest">Find your next place</span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-3">Browse Vacant Owner Listed Flats</h2>
-            <p className="text-gray-500 mt-4 max-w-2xl mx-auto text-lg">
-              Explore currently vacant flat listings posted by property owners. Click Interested to send your inquiry directly to the owner dashboard.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-blue-100 bg-white p-4 sm:p-5 shadow-[0_10px_35px_rgba(37,99,235,0.08)] mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-3">
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchCity}
-                  onChange={(e) => setSearchCity(e.target.value)}
-                  placeholder="Search by city, state, or street"
-                  className="w-full rounded-xl border border-gray-200 pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/40"
-                />
-              </div>
-              <select
-                value={searchType}
-                onChange={(e) => setSearchType(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/40"
-              >
-                <option value="All">All property types</option>
-                <option value="Home">Home</option>
-                <option value="Flat">Flat</option>
-                <option value="Office">Office</option>
-                <option value="Shop">Shop</option>
-              </select>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+            <div>
+              <span className="text-sm font-semibold text-blue-600 uppercase tracking-widest">Find your next place</span>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-2">Vacant Properties</h2>
+              <p className="text-gray-500 mt-2 max-w-xl text-base">
+                Owner-listed vacant properties, updated in real time. Browse below or explore the full catalogue.
+              </p>
             </div>
+            <Link
+              to="/properties"
+              className="shrink-0 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors shadow-md shadow-blue-200 group"
+            >
+              View All Properties
+              <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+            </Link>
           </div>
 
           {propertyLoading ? (
             <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-500">Loading properties...</div>
-          ) : filteredProperties.length === 0 ? (
-            <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-500">No properties match your search right now.</div>
+          ) : vacantProperties.length === 0 ? (
+            <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-500">No vacant properties listed right now.</div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {filteredProperties.map((property) => (
-                <div key={property._id} className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
-                  {/* Property type image */}
-                  <img
-                    src={
-                      property.propertyType === "Flat"
-                        ? "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80"
-                        : property.propertyType === "Office"
-                        ? "https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&q=80"
-                        : property.propertyType === "Shop"
-                        ? "https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&q=80"
-                        : property.propertyType === "Villa"
-                        ? "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=600&q=80"
-                        : property.propertyType === "House"
-                        ? "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=600&q=80"
-                        : "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=600&q=80"
-                    }
-                    alt={property.propertyType}
-                    className="w-full h-44 object-cover"
-                  />
-                  <div className="p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">{property.propertyType}</p>
-                      <h3 className="text-lg font-bold text-gray-900 mt-1">
-                        {property?.address?.city || "Unknown city"}, {property?.address?.state || "Unknown state"}
-                      </h3>
+            <div className="relative">
+              <div className="overflow-hidden rounded-2xl">
+                <div
+                  className="flex transition-transform duration-700 ease-in-out gap-5"
+                  style={{ transform: `translateX(calc(-${carouselIndex * (100 / VISIBLE)}% - ${carouselIndex * (20 / VISIBLE)}px))` }}
+                >
+                  {vacantProperties.map((property) => (
+                    <div
+                      key={property._id}
+                      className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex-shrink-0"
+                      style={{ width: `calc(${100 / VISIBLE}% - ${(20 * (VISIBLE - 1)) / VISIBLE}px)` }}
+                    >
+                      <div className="relative overflow-hidden">
+                        <img
+                          src={
+                            property.propertyType === "Flat"
+                              ? "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80"
+                              : property.propertyType === "Office"
+                              ? "https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&q=80"
+                              : property.propertyType === "Shop"
+                              ? "https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&q=80"
+                              : property.propertyType === "Villa"
+                              ? "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=600&q=80"
+                              : property.propertyType === "House"
+                              ? "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=600&q=80"
+                              : "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=600&q=80"
+                          }
+                          alt={property.propertyType}
+                          className="w-full h-44 object-cover hover:scale-105 transition-transform duration-500"
+                        />
+                        <span className="absolute top-3 left-3 text-[11px] font-bold uppercase tracking-wider bg-white/90 backdrop-blur-sm text-blue-700 px-2.5 py-1 rounded-lg shadow-sm">
+                          {property.propertyType}
+                        </span>
+                        <span className="absolute top-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 bg-emerald-50/90 backdrop-blur-sm text-emerald-700">
+                          Vacant
+                        </span>
+                      </div>
+                      <div className="p-5">
+                        <h3 className="text-base font-bold text-gray-900">
+                          {property?.address?.city || "Unknown city"}, {property?.address?.state || ""}
+                        </h3>
+                        <p className="text-sm text-gray-500 mt-1 line-clamp-2 leading-relaxed">
+                          {property?.description || "No description provided by owner yet."}
+                        </p>
+                        <div className="mt-3 space-y-1 text-xs text-gray-500">
+                          <p className="flex items-center gap-1.5"><MapPin size={12} className="text-blue-400" />{property?.address?.street || "Address not available"}</p>
+                          <p>Rooms: <span className="font-semibold text-gray-700">{property.numberOfRooms || 1}</span> &nbsp;|&nbsp; Listed by: <span className="font-semibold text-gray-700">{property?.owner?.name || "Owner"}</span></p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleInterested(property)}
+                          disabled={submittingInquiryId === property._id}
+                          className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-60"
+                        >
+                          {submittingInquiryId === property._id ? "Submitting..." : "I'm Interested"}
+                        </button>
+                      </div>
                     </div>
-                    <span className={`text-[11px] font-semibold px-2 py-1 rounded-full border ${property.status === "Vacant" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
-                      {property.status}
-                    </span>
-                  </div>
+                  ))}
+                </div>
+              </div>
 
-                  <p className="text-sm text-gray-600 mt-2 leading-relaxed">
-                    {property?.description || "No description provided by owner yet."}
-                  </p>
-
-                  <div className="mt-4 space-y-1.5 text-xs text-gray-600">
-                    <p className="flex items-center gap-1.5"><MapPin size={13} className="text-blue-500" /> {property?.address?.street || "Address not available"}</p>
-                    <p>Rooms: <span className="font-semibold text-gray-800">{property.numberOfRooms || 1}</span></p>
-                    <p>Listed by: <span className="font-semibold text-gray-800">{property?.owner?.name || "Owner"}</span></p>
-                  </div>
-
+              {vacantProperties.length > VISIBLE && (
+                <>
                   <button
                     type="button"
-                    onClick={() => handleInterested(property)}
-                    disabled={submittingInquiryId === property._id}
-                    className="mt-5 w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-60"
+                    onClick={carouselPrev}
+                    className="absolute -left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-colors z-10"
+                    aria-label="Previous"
                   >
-                    {submittingInquiryId === property._id ? "Submitting..." : "Interested"}
+                    <ChevronLeft size={20} />
                   </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={carouselNext}
+                    className="absolute -right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-colors z-10"
+                    aria-label="Next"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </>
+              )}
+
+              {vacantProperties.length > VISIBLE && (
+                <div className="flex justify-center gap-1.5 mt-6">
+                  {Array.from({ length: Math.max(0, vacantProperties.length - VISIBLE) + 1 }).map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        setCarouselIndex(i);
+                        startCarouselTimer();
+                      }}
+                      className={`h-2 rounded-full transition-all duration-300 ${i === carouselIndex ? "w-6 bg-blue-600" : "w-2 bg-gray-300 hover:bg-blue-300"}`}
+                      aria-label={`Go to slide ${i + 1}`}
+                    />
+                  ))}
                 </div>
-              ))}
+              )}
+
+              <div className="text-center mt-10">
+                <Link
+                  to="/properties"
+                  className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-semibold text-sm border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 px-6 py-3 rounded-xl transition-all group"
+                >
+                  Explore all {vacantProperties.length > 0 ? `${vacantProperties.length} ` : ""}vacant properties
+                  <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </div>
             </div>
           )}
         </div>
@@ -571,7 +611,7 @@ const LandingPage = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((f, i) => (
+            {FEATURES.map((f) => (
               <div key={f.title} className="group p-6 bg-white rounded-2xl border border-gray-100 hover:border-blue-200 hover:shadow-[0_8px_40px_rgba(59,130,246,0.12)] transition-all duration-300 cursor-default">
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${f.color} mb-4 group-hover:scale-110 transition-transform duration-300 shadow-sm`}>
                   <f.icon size={22} />
@@ -593,10 +633,9 @@ const LandingPage = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 relative">
-            {/* Connector line desktop */}
             <div className="hidden lg:block absolute top-10 left-[12.5%] right-[12.5%] h-0.5 bg-gradient-to-r from-blue-100 via-blue-400 to-blue-100" />
 
-            {HOW_IT_WORKS.map((s, i) => (
+            {HOW_IT_WORKS.map((s) => (
               <div key={s.step} className="relative text-center">
                 <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-xl shadow-blue-200 border border-blue-400/20 mb-5 text-2xl font-extrabold text-white">
                   {s.step}
@@ -719,75 +758,6 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ── LEGAL & HELP ── */}
-      <section className="py-24 bg-gradient-to-b from-slate-50 to-blue-50/60 relative overflow-hidden">
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[700px] h-[220px] bg-blue-300/20 blur-3xl rounded-full pointer-events-none" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 relative">
-          <div className="text-center mb-12">
-            <span className="text-sm font-semibold text-blue-700 uppercase tracking-widest">Trust & Transparency</span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-3">Policy and Help Center</h2>
-            <p className="text-slate-500 mt-3 max-w-2xl mx-auto">Everything important in one consistent experience, right inside the landing page.</p>
-          </div>
-
-          <article id="privacy-policy" className="scroll-mt-24 bg-white border border-blue-100 rounded-3xl p-6 sm:p-8 shadow-[0_12px_36px_rgba(37,99,235,0.10)]">
-            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-5">Privacy Policy</h3>
-            <div className="grid md:grid-cols-3 gap-4">
-              {[
-                "We collect only account, lease, maintenance, and payment information required for secure platform operation.",
-                "Your data is used for workflows, support, and reliability improvements, and is never sold to third parties.",
-                "You can request access, correction, or deletion of your data by contacting PropManager support.",
-              ].map((point) => (
-                <div key={point} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                  <p className="text-slate-600 text-sm leading-relaxed">{point}</p>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article id="faq" className="scroll-mt-24 bg-white border border-indigo-100 rounded-3xl p-6 sm:p-8 shadow-[0_12px_36px_rgba(79,70,229,0.10)]">
-            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-6">Frequently Asked Questions</h3>
-            <div className="space-y-3">
-              {FAQ_ITEMS.map((item, index) => {
-                const isOpen = openFaqIndex === index;
-                return (
-                  <div key={item.q} className="rounded-2xl border border-slate-200 bg-white overflow-hidden transition-all duration-300">
-                    <button
-                      type="button"
-                      onClick={() => setOpenFaqIndex(isOpen ? null : index)}
-                      className="w-full flex items-center justify-between gap-3 px-4 sm:px-5 py-4 text-left hover:bg-slate-50 transition-colors"
-                    >
-                      <span className="font-semibold text-slate-900">{item.q}</span>
-                      <span className="shrink-0 w-8 h-8 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-100">
-                        {isOpen ? <Minus size={16} /> : <Plus size={16} />}
-                      </span>
-                    </button>
-                    {isOpen && (
-                      <div className="px-4 sm:px-5 pb-4 pt-1">
-                        <p className="text-slate-600 text-sm leading-relaxed">{item.a}</p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </article>
-
-          <article id="terms-and-conditions" className="scroll-mt-24 bg-white border border-sky-100 rounded-3xl p-6 sm:p-8 shadow-[0_12px_36px_rgba(14,165,233,0.10)]">
-            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-5">Terms and Conditions</h3>
-            <div className="grid md:grid-cols-3 gap-4">
-              {[
-                "By using PropManager, you agree to provide accurate account and property information and use the platform lawfully.",
-                "You are responsible for maintaining account credential security and activity performed under your account.",
-                "Features may evolve for reliability and security, and misuse can result in restrictions or suspension.",
-              ].map((point) => (
-                <div key={point} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                  <p className="text-slate-600 text-sm leading-relaxed">{point}</p>
-                </div>
-              ))}
-            </div>
-          </article>
-        </div>
-      </section>
 
       {/* ── FOOTER ── */}
       <footer className="bg-slate-900 text-slate-400 py-10">
@@ -800,17 +770,21 @@ const LandingPage = () => {
           </div>
           <p className="text-sm text-slate-500">© {new Date().getFullYear()} PropManager. All rights reserved.</p>
           <div className="flex flex-wrap items-center justify-center gap-5 text-sm">
-            <a href="#privacy-policy" className="hover:text-white transition-colors">
+            <Link to="/privacy-policy" className="hover:text-white transition-colors">
               Privacy Policy
-            </a>
-            <a href="#faq" className="hover:text-white transition-colors">
-              Frequently Asked Questions
-            </a>
-            <a href="#terms-and-conditions" className="hover:text-white transition-colors">
-              Terms and Conditions
-            </a>
-            <Link to="/login" className="hover:text-white transition-colors">Sign In</Link>
-            <Link to="/register" className="hover:text-white transition-colors">Register</Link>
+            </Link>
+            <Link to="/faq" className="hover:text-white transition-colors">
+              FAQ
+            </Link>
+            <Link to="/terms-and-conditions" className="hover:text-white transition-colors">
+              Terms & Conditions
+            </Link>
+            {!isLoggedIn && (
+              <>
+                <Link to="/login" className="hover:text-white transition-colors">Sign In</Link>
+                <Link to="/register" className="hover:text-white transition-colors">Register</Link>
+              </>
+            )}
           </div>
         </div>
       </footer>

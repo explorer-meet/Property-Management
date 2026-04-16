@@ -331,15 +331,7 @@ const OwnerDashboard = () => {
       <PageHeader
         title="Dashboard"
         subtitle="Welcome back. Here is your live portfolio command center with clear priorities."
-        action={
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
-          >
-            <Home size={14} /> Back to Home
-          </button>
-        }
+        action={null}
       />
 
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 px-6 py-7 sm:px-8 sm:py-8 shadow-2xl animate-fade-up">

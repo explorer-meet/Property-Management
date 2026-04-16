@@ -8,6 +8,10 @@ import Layout from "./components/Layout";
 
 // Landing
 import LandingPage from "./pages/LandingPage";
+import BrowseProperties from "./pages/BrowseProperties";
+import FAQ from "./pages/FAQ";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsAndConditions from "./pages/TermsAndConditions";
 
 // Auth
 import Login from "./pages/auth/Login";
@@ -73,9 +77,10 @@ function App() {
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
-          <Route path="/privacy-policy" element={<Navigate to="/#privacy-policy" replace />} />
-          <Route path="/faq" element={<Navigate to="/#faq" replace />} />
-          <Route path="/terms-and-conditions" element={<Navigate to="/#terms-and-conditions" replace />} />
+          <Route path="/properties" element={<BrowseProperties />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/faq" element={<FAQ />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

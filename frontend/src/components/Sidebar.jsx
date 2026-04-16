@@ -1,45 +1,87 @@
 import React, { useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
+import { NavLink, useLocation } from "react-router-dom";
+import { useSelector } from "react-redux";
 import {
   Building2, LayoutDashboard, Home, Users, DollarSign,
-  Wrench, LogOut, Menu, X, MapPin, ChevronRight, UserCircle2, AlertTriangle, Bell, RefreshCcw, DoorOpen, MessageCircle, ArrowLeft,
+  Wrench, Menu, X, MapPin, ChevronRight, UserCircle2, Bell, RefreshCcw, DoorOpen, MessageCircle, ChevronDown,
 } from "lucide-react";
-import { logout } from "../app/slices/authSlice";
-import toast from "react-hot-toast";
-import { Modal } from "./UI";
 
 const ownerLinks = [
-  { to: "/owner/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/owner/properties", label: "Properties", icon: Home },
-  { to: "/owner/tenants", label: "Tenants & Leases", icon: Users },
-  { to: "/owner/renewals", label: "Lease Renewals", icon: RefreshCcw },
-  { to: "/owner/move-out", label: "Move-Out Requests", icon: DoorOpen },
-  { to: "/owner/rent", label: "Rent Management", icon: DollarSign },
-  { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
-  { to: "/owner/inquiries", label: "Inquiries", icon: MessageCircle },
-  { to: "/owner/vacancies", label: "Vacancies", icon: MapPin },
-  { to: "/owner/notifications", label: "Notifications", icon: Bell },
-  { to: "/owner/profile", label: "My Profile", icon: UserCircle2 },
+  {
+    section: "Dashboard & Overview",
+    items: [
+      { to: "/owner/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ]
+  },
+  {
+    section: "Property Management",
+    items: [
+      { to: "/owner/properties", label: "Properties", icon: Home },
+      { to: "/owner/tenants", label: "Tenants & Leases", icon: Users },
+      { to: "/owner/vacancies", label: "Vacancies", icon: MapPin },
+    ]
+  },
+  {
+    section: "Lease Management",
+    items: [
+      { to: "/owner/renewals", label: "Lease Renewals", icon: RefreshCcw },
+      { to: "/owner/move-out", label: "Move-Out Requests", icon: DoorOpen },
+    ]
+  },
+  {
+    section: "Financial & Operations",
+    items: [
+      { to: "/owner/rent", label: "Rent Management", icon: DollarSign },
+      { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
+    ]
+  },
+  {
+    section: "Communication",
+    items: [
+      { to: "/owner/inquiries", label: "Inquiries", icon: MessageCircle },
+      { to: "/owner/notifications", label: "Notifications", icon: Bell },
+      { to: "/owner/profile", label: "My Profile", icon: UserCircle2 },
+    ]
+  },
 ];
 
 const tenantLinks = [
-  { to: "/tenant/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/tenant/rent", label: "Rent & Payments", icon: DollarSign },
-  { to: "/tenant/maintenance", label: "My Requests", icon: Wrench },
-  { to: "/tenant/inquiries", label: "Inquiries", icon: MessageCircle },
-  { to: "/tenant/notifications", label: "Notifications", icon: Bell },
-  { to: "/tenant/profile", label: "My Profile", icon: UserCircle2 },
+  {
+    section: "Dashboard",
+    items: [
+      { to: "/tenant/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ]
+  },
+  {
+    section: "My Tenancy",
+    items: [
+      { to: "/tenant/rent", label: "Rent & Payments", icon: DollarSign },
+      { to: "/tenant/maintenance", label: "My Requests", icon: Wrench },
+    ]
+  },
+  {
+    section: "Communication",
+    items: [
+      { to: "/tenant/inquiries", label: "Inquiries", icon: MessageCircle },
+      { to: "/tenant/notifications", label: "Notifications", icon: Bell },
+      { to: "/tenant/profile", label: "My Profile", icon: UserCircle2 },
+    ]
+  },
 ];
 
 const Sidebar = () => {
-  const dispatch = useDispatch();
-  const navigate = useNavigate();
   const location = useLocation();
   const { user } = useSelector((s) => s.auth);
   const isOwner = user?.role === "owner";
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [expandedSections, setExpandedSections] = useState({});
+
+  const toggleSection = (section) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
 
   const links = user?.role === "owner" ? ownerLinks : tenantLinks;
   const brandPanelClass = isOwner
@@ -54,14 +96,6 @@ const Sidebar = () => {
   const inactiveLinkClass = isOwner
     ? "text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
     : "text-slate-600 hover:bg-emerald-50 hover:text-emerald-700";
-
-  const handleLogout = () => {
-    dispatch(logout());
-    setLogoutModalOpen(false);
-    setMobileOpen(false);
-    toast.success("Logged out successfully.");
-    navigate("/");
-  };
 
   const SidebarContent = () => (
     <div className={`relative flex flex-col h-full overflow-hidden bg-gradient-to-b ${brandPanelClass}`}>
@@ -97,63 +131,63 @@ const Sidebar = () => {
       </div>
 
       {/* Navigation */}
-      <nav className="relative min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
-        <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Navigation</p>
-        {links.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={(e) => {
-              if (location.pathname === to) {
-                e.preventDefault();
-                return;
-              }
-              setMobileOpen(false);
-            }}
-            preventScrollReset
-            className={({ isActive }) =>
-              `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                isActive
-                  ? activeLinkClass
-                  : inactiveLinkClass
-              }`
-            }
-          >
-            <Icon size={18} className="transition-transform duration-200 group-hover:scale-110" />
-            <span className="flex-1">{label}</span>
-            <ChevronRight size={14} className="opacity-40 transition-transform duration-200 group-hover:translate-x-0.5" />
-          </NavLink>
-        ))}
+      <nav className="relative min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {links.map((section, idx) => {
+          const isExpanded = expandedSections[section.section] === true;
+          
+          return (
+            <div key={idx} className={idx > 0 ? "mt-3" : ""}>
+              {/* Section Header - Clickable */}
+              <button
+                onClick={() => toggleSection(section.section)}
+                className="w-full px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-2 group"
+              >
+                <ChevronDown 
+                  size={14} 
+                  className={`transition-transform duration-300 ${isExpanded ? "rotate-0" : "-rotate-90"}`} 
+                />
+                <span className="flex-1 text-left">{section.section}</span>
+                <span className="flex-1 h-px bg-gradient-to-r from-slate-300 to-transparent" />
+              </button>
+              
+              {/* Section Items - Collapsible */}
+              <div
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                  isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+                }`}
+              >
+                <div className="space-y-1.5 mt-1.5">
+                  {section.items.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      onClick={(e) => {
+                        if (location.pathname === to) {
+                          e.preventDefault();
+                          return;
+                        }
+                        setMobileOpen(false);
+                      }}
+                      preventScrollReset
+                      className={({ isActive }) =>
+                        `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                          isActive
+                            ? activeLinkClass
+                            : inactiveLinkClass
+                        }`
+                      }
+                    >
+                      <Icon size={18} className="transition-transform duration-200 group-hover:scale-110" />
+                      <span className="flex-1">{label}</span>
+                      <ChevronRight size={14} className="opacity-40 transition-transform duration-200 group-hover:translate-x-0.5" />
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </nav>
-
-      {/* Logout */}
-      <div className="relative shrink-0 px-4 py-4 border-t border-white/70 bg-white/70 backdrop-blur-sm">
-        <button
-          onClick={() => {
-            setMobileOpen(false);
-            navigate("/");
-          }}
-          className="mb-2.5 group w-full rounded-2xl border border-slate-200/80 bg-gradient-to-r from-white to-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200"
-        >
-          <span className="inline-flex items-center gap-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 group-hover:bg-slate-200 transition-colors">
-              <ArrowLeft size={16} />
-            </span>
-            <span>Back to Home</span>
-          </span>
-        </button>
-        <button
-          onClick={() => setLogoutModalOpen(true)}
-          className="group w-full rounded-2xl border border-rose-200/80 bg-gradient-to-r from-rose-50 to-red-50 px-3.5 py-2.5 text-sm font-semibold text-rose-700 shadow-sm hover:shadow-md hover:from-rose-100 hover:to-red-100 transition-all duration-200"
-        >
-          <span className="inline-flex items-center gap-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-100 text-rose-600 group-hover:bg-rose-200 transition-colors">
-              <LogOut size={16} />
-            </span>
-            <span>Logout</span>
-          </span>
-        </button>
-      </div>
     </div>
   );
 
@@ -196,41 +230,6 @@ const Sidebar = () => {
       <aside className="hidden lg:flex flex-col w-72 h-screen sticky top-0 border-r border-white/70 shadow-[0_8px_30px_rgba(15,23,42,0.10)] backdrop-blur-sm">
         <SidebarContent />
       </aside>
-
-      <Modal isOpen={logoutModalOpen} onClose={() => setLogoutModalOpen(false)} title="Confirm Logout">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 via-white to-orange-50 p-4">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-red-100 p-2 text-red-600">
-                <AlertTriangle size={18} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">You are about to log out</p>
-                <p className="mt-1 text-xs text-gray-600">
-                  You will be redirected to the sign-in page and will need credentials to access your dashboard again.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setLogoutModalOpen(false)}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Stay Logged In
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-lg bg-gradient-to-r from-red-600 to-orange-600 px-4 py-2 text-sm font-semibold text-white hover:from-red-700 hover:to-orange-700 shadow-sm"
-            >
-              Yes, Logout
-            </button>
-          </div>
-        </div>
-      </Modal>
     </>
   );
 };
