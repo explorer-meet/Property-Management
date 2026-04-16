@@ -19,6 +19,8 @@ import {
   FileText,
   Upload,
   ShieldCheck,
+  MessageCircle,
+  Home,
 } from "lucide-react";
 import { Modal, PageHeader, StatusBadge } from "../../components/UI";
 import api from "../../utils/api";
@@ -45,6 +47,7 @@ const TenantDashboard = () => {
   const [moveOutForm, setMoveOutForm] = useState({ requestedMoveOutDate: "", reason: "" });
   const [complianceDocs, setComplianceDocs] = useState([]);
   const [renewals, setRenewals] = useState([]);
+  const [inquiries, setInquiries] = useState([]);
   const [docsModal, setDocsModal] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [docForm, setDocForm] = useState({
@@ -58,13 +61,14 @@ const TenantDashboard = () => {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const [{ data: res }, { data: rentRes }, { data: maintenanceRes }, { data: moveOutRes }, { data: docsRes }, { data: renewalRes }] = await Promise.all([
+        const [{ data: res }, { data: rentRes }, { data: maintenanceRes }, { data: moveOutRes }, { data: docsRes }, { data: renewalRes }, { data: inquiryRes }] = await Promise.all([
           api.get("/tenant/dashboard"),
           api.get("/tenant/rent-history"),
           api.get("/tenant/maintenance"),
           api.get("/tenant/move-out"),
           api.get("/tenant/compliance-documents"),
           api.get("/tenant/renewals"),
+          api.get("/tenant/inquiries"),
         ]);
 
         setData(res);
@@ -78,6 +82,7 @@ const TenantDashboard = () => {
         setMoveOutRequests(moveOutHistory);
         setComplianceDocs(docs);
         setRenewals(renewalRes?.renewals || []);
+        setInquiries(inquiryRes?.inquiries || []);
 
         const now = new Date();
         const within7Days = new Date();
@@ -299,6 +304,15 @@ const TenantDashboard = () => {
       <PageHeader
         title="My Dashboard"
         subtitle="Your complete tenancy command center with rent, requests, lease timeline and documents"
+        action={
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            <Home size={14} /> Back to Home
+          </button>
+        }
       />
 
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 px-6 py-7 sm:px-8 shadow-2xl animate-fade-up">
@@ -391,6 +405,59 @@ const TenantDashboard = () => {
                 </div>
               );
             })}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <MessageCircle size={18} className="text-cyan-600" /> My Property Inquiries
+          </h3>
+          <span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-cyan-700">
+            {inquiries.length} total
+          </span>
+        </div>
+
+        {inquiries.length === 0 ? (
+          <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            You have not sent any property inquiry yet. Explore listings on the landing page and click Interested.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {inquiries.slice(0, 6).map((inquiry) => (
+              <div key={inquiry._id} className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-cyan-50/40 p-3.5 hover:shadow-md transition-all duration-200">
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {inquiry.property?.propertyType || "Property"} - {inquiry.property?.address?.city || "N/A"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-600">Owner: {inquiry.owner?.name || "N/A"}</p>
+                    <p className="text-xs text-gray-500">Email: {inquiry.owner?.email || "N/A"}</p>
+                    <p className="text-xs text-gray-500 inline-flex items-center gap-1"><Phone size={12} /> {inquiry.owner?.phone || "N/A"}</p>
+                    {inquiry.message ? (
+                      <p className="mt-2 rounded-lg border border-cyan-100 bg-cyan-50 px-2 py-1.5 text-xs text-cyan-700">
+                        {inquiry.message}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1 border-t border-gray-100">
+                    <p className="text-[11px] text-gray-500">Sent on {new Date(inquiry.createdAt).toLocaleString()}</p>
+                    <span className={`inline-flex w-fit text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                      inquiry.status === "Closed"
+                        ? "border-gray-200 bg-gray-100 text-gray-700"
+                        : inquiry.status === "Contacted"
+                          ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : inquiry.status === "In Progress"
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    }`}>
+                      {inquiry.status || "New"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>
