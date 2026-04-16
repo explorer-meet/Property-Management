@@ -25,17 +25,51 @@ import MoveOutRequests from "./pages/owner/MoveOutRequests";
 import RentManagement from "./pages/owner/RentManagement";
 import Maintenance from "./pages/owner/Maintenance";
 import Vacancies from "./pages/owner/Vacancies";
+import OwnerInquiries from "./pages/owner/OwnerInquiries";
 
 // Tenant
 import TenantDashboard from "./pages/tenant/TenantDashboard";
 import TenantRent from "./pages/tenant/TenantRent";
 import TenantMaintenance from "./pages/tenant/TenantMaintenance";
+import TenantInquiries from "./pages/tenant/TenantInquiries";
 
 function App() {
   return (
     <Provider store={store}>
       <BrowserRouter>
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+        <Toaster
+          position="top-right"
+          gutter={10}
+          toastOptions={{
+            duration: 4000,
+            style: {
+              borderRadius: "16px",
+              padding: "14px 18px",
+              fontSize: "14px",
+              fontWeight: "500",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.14)",
+              maxWidth: "380px",
+            },
+            success: {
+              duration: 3500,
+              style: {
+                background: "#f0fdf4",
+                color: "#166534",
+                border: "1.5px solid #86efac",
+              },
+              iconTheme: { primary: "#16a34a", secondary: "#f0fdf4" },
+            },
+            error: {
+              duration: 6000,
+              style: {
+                background: "#fef2f2",
+                color: "#991b1b",
+                border: "1.5px solid #fca5a5",
+              },
+              iconTheme: { primary: "#dc2626", secondary: "#fef2f2" },
+            },
+          }}
+        />
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPage />} />
@@ -63,6 +97,7 @@ function App() {
             <Route path="move-out" element={<MoveOutRequests />} />
             <Route path="rent" element={<RentManagement />} />
             <Route path="maintenance" element={<Maintenance />} />
+            <Route path="inquiries" element={<OwnerInquiries />} />
             <Route path="vacancies" element={<Vacancies />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
@@ -81,6 +116,7 @@ function App() {
             <Route path="dashboard" element={<TenantDashboard />} />
             <Route path="rent" element={<TenantRent />} />
             <Route path="maintenance" element={<TenantMaintenance />} />
+            <Route path="inquiries" element={<TenantInquiries />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
           </Route>

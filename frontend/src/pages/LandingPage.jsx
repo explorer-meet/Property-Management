@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Building2, Home, Users, DollarSign, Wrench, Shield,
   BarChart3, Bell, ChevronRight, Star, CheckCircle2,
-  ArrowRight, Menu, X, MapPin, TrendingUp, Clock, Plus, Minus,
+  ArrowRight, Menu, X, MapPin, TrendingUp, Clock, Plus, Minus, Search,
 } from "lucide-react";
 import { formatCurrencyCompact, formatCurrency } from "../utils/currency";
+import api from "../utils/api";
+import toast from "react-hot-toast";
 
 /* ─── tiny hook: count-up animation ─── */
 const useCountUp = (target, duration = 1800) => {
@@ -124,16 +126,100 @@ const FAQ_ITEMS = [
   },
 ];
 
+const getStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem("pms_user") || "null");
+  } catch {
+    return null;
+  }
+};
+
 const LandingPage = () => {
+  const navigate = useNavigate();
+  const [authUser, setAuthUser] = useState(() => getStoredUser());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+  const [publicProperties, setPublicProperties] = useState([]);
+  const [propertyLoading, setPropertyLoading] = useState(true);
+  const [searchCity, setSearchCity] = useState("");
+  const [searchType, setSearchType] = useState("All");
+  const [authPromptProperty, setAuthPromptProperty] = useState(null);
+  const [submittingInquiryId, setSubmittingInquiryId] = useState("");
+
+  const isLoggedIn = Boolean(authUser) && Boolean(localStorage.getItem("pms_token"));
+  const dashboardPath = authUser?.role === "owner" ? "/owner/dashboard" : "/tenant/dashboard";
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    const syncAuthUser = () => setAuthUser(getStoredUser());
+    window.addEventListener("storage", syncAuthUser);
+    return () => window.removeEventListener("storage", syncAuthUser);
+  }, []);
+
+  useEffect(() => {
+    const fetchPublicProperties = async () => {
+      try {
+        const { data } = await api.get("/properties/public");
+        setPublicProperties(data?.properties || []);
+      } catch {
+        toast.error("Unable to load properties right now.");
+      } finally {
+        setPropertyLoading(false);
+      }
+    };
+
+    fetchPublicProperties();
+  }, []);
+
+  const filteredProperties = publicProperties.filter((property) => {
+    const isVacant = property?.status === "Vacant";
+    if (!isVacant) return false;
+
+    const matchesType = searchType === "All" || property.propertyType === searchType;
+    const location = `${property?.address?.street || ""} ${property?.address?.city || ""} ${property?.address?.state || ""}`.toLowerCase();
+    const matchesCity = !searchCity.trim() || location.includes(searchCity.trim().toLowerCase());
+    return matchesType && matchesCity;
+  });
+
+  const handleInterested = async (property) => {
+    const token = localStorage.getItem("pms_token");
+    let user = null;
+
+    try {
+      user = JSON.parse(localStorage.getItem("pms_user") || "null");
+    } catch {
+      user = null;
+    }
+
+    const pendingPayload = {
+      propertyId: property._id,
+      message: `I am interested in your ${property.propertyType} listing in ${property?.address?.city || "this area"}.`,
+      savedAt: new Date().toISOString(),
+    };
+
+    if (!token || !user) {
+      localStorage.setItem("pendingPropertyInquiry", JSON.stringify(pendingPayload));
+      setAuthPromptProperty(property);
+      return;
+    }
+
+    try {
+      setSubmittingInquiryId(property._id);
+      await api.post(`/properties/${property._id}/inquiries`, { message: pendingPayload.message });
+      toast.success("Inquiry sent to property owner.");
+    } catch (err) {
+      const errorMessage = err?.response?.data?.message || "Unable to submit inquiry.";
+      toast.error(errorMessage);
+    } finally {
+      setSubmittingInquiryId("");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
@@ -150,20 +236,45 @@ const LandingPage = () => {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
-            <a href="#features" className="hover:text-blue-600 transition-colors">Features</a>
-            <a href="#how-it-works" className="hover:text-blue-600 transition-colors">How it works</a>
-            <a href="#testimonials" className="hover:text-blue-600 transition-colors">Reviews</a>
+          <nav className="hidden md:flex items-center gap-1 rounded-2xl border border-blue-100/80 bg-white/85 px-2 py-1 shadow-[0_10px_28px_rgba(37,99,235,0.14)] backdrop-blur">
+            <a href="#features" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+              Features
+              <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
+            </a>
+            <a href="#browse-properties" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+              Browse Properties
+              <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
+            </a>
+            <a href="#how-it-works" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+              How it works
+              <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
+            </a>
+            <a href="#testimonials" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+              Reviews
+              <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
+            </a>
           </nav>
 
           {/* CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors px-3 py-2">
-              Sign In
-            </Link>
-            <Link to="/register" className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm">
-              Get Started Free
-            </Link>
+            {isLoggedIn ? (
+              <button
+                type="button"
+                onClick={() => navigate(dashboardPath)}
+                className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm inline-flex items-center gap-1.5"
+              >
+                <Home size={14} /> Dashboard
+              </button>
+            ) : (
+              <>
+                <Link to="/login" className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors px-3 py-2">
+                  Sign In
+                </Link>
+                <Link to="/register" className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm">
+                  Get Started Free
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile hamburger */}
@@ -176,11 +287,27 @@ const LandingPage = () => {
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 px-4 py-4 space-y-3">
             <a href="#features" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Features</a>
+            <a href="#browse-properties" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Browse Properties</a>
             <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">How it works</a>
             <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Reviews</a>
             <div className="flex gap-3 pt-2">
-              <Link to="/login" className="flex-1 text-center border border-gray-200 text-sm font-medium text-gray-700 py-2 rounded-lg">Sign In</Link>
-              <Link to="/register" className="flex-1 text-center bg-blue-600 text-sm font-semibold text-white py-2 rounded-lg">Get Started</Link>
+              {isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate(dashboardPath);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="flex-1 text-center bg-blue-600 text-sm font-semibold text-white py-2 rounded-lg inline-flex items-center justify-center gap-1.5"
+                >
+                  <Home size={14} /> Dashboard
+                </button>
+              ) : (
+                <>
+                  <Link to="/login" className="flex-1 text-center border border-gray-200 text-sm font-medium text-gray-700 py-2 rounded-lg">Sign In</Link>
+                  <Link to="/register" className="flex-1 text-center bg-blue-600 text-sm font-semibold text-white py-2 rounded-lg">Get Started</Link>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -325,6 +452,108 @@ const LandingPage = () => {
           <StatItem value={850} suffix="+" label="Happy Tenants" />
           <StatItem value={98} suffix="%" label="Rent Collected On-Time" />
           <StatItem value={500} suffix="+" label="Maintenance Resolved" />
+        </div>
+      </section>
+
+      {/* ── BROWSE PROPERTIES ── */}
+      <section id="browse-properties" className="py-24 bg-gradient-to-b from-white to-blue-50/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <span className="text-sm font-semibold text-blue-600 uppercase tracking-widest">Find your next place</span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-3">Browse Vacant Owner Listed Flats</h2>
+            <p className="text-gray-500 mt-4 max-w-2xl mx-auto text-lg">
+              Explore currently vacant flat listings posted by property owners. Click Interested to send your inquiry directly to the owner dashboard.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-blue-100 bg-white p-4 sm:p-5 shadow-[0_10px_35px_rgba(37,99,235,0.08)] mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-3">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchCity}
+                  onChange={(e) => setSearchCity(e.target.value)}
+                  placeholder="Search by city, state, or street"
+                  className="w-full rounded-xl border border-gray-200 pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+                />
+              </div>
+              <select
+                value={searchType}
+                onChange={(e) => setSearchType(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+              >
+                <option value="All">All property types</option>
+                <option value="Home">Home</option>
+                <option value="Flat">Flat</option>
+                <option value="Office">Office</option>
+                <option value="Shop">Shop</option>
+              </select>
+            </div>
+          </div>
+
+          {propertyLoading ? (
+            <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-500">Loading properties...</div>
+          ) : filteredProperties.length === 0 ? (
+            <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-500">No properties match your search right now.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {filteredProperties.map((property) => (
+                <div key={property._id} className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
+                  {/* Property type image */}
+                  <img
+                    src={
+                      property.propertyType === "Flat"
+                        ? "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80"
+                        : property.propertyType === "Office"
+                        ? "https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&q=80"
+                        : property.propertyType === "Shop"
+                        ? "https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&q=80"
+                        : property.propertyType === "Villa"
+                        ? "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=600&q=80"
+                        : property.propertyType === "House"
+                        ? "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=600&q=80"
+                        : "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=600&q=80"
+                    }
+                    alt={property.propertyType}
+                    className="w-full h-44 object-cover"
+                  />
+                  <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">{property.propertyType}</p>
+                      <h3 className="text-lg font-bold text-gray-900 mt-1">
+                        {property?.address?.city || "Unknown city"}, {property?.address?.state || "Unknown state"}
+                      </h3>
+                    </div>
+                    <span className={`text-[11px] font-semibold px-2 py-1 rounded-full border ${property.status === "Vacant" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                      {property.status}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                    {property?.description || "No description provided by owner yet."}
+                  </p>
+
+                  <div className="mt-4 space-y-1.5 text-xs text-gray-600">
+                    <p className="flex items-center gap-1.5"><MapPin size={13} className="text-blue-500" /> {property?.address?.street || "Address not available"}</p>
+                    <p>Rooms: <span className="font-semibold text-gray-800">{property.numberOfRooms || 1}</span></p>
+                    <p>Listed by: <span className="font-semibold text-gray-800">{property?.owner?.name || "Owner"}</span></p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleInterested(property)}
+                    disabled={submittingInquiryId === property._id}
+                    className="mt-5 w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-60"
+                  >
+                    {submittingInquiryId === property._id ? "Submitting..." : "Interested"}
+                  </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -585,6 +814,46 @@ const LandingPage = () => {
           </div>
         </div>
       </footer>
+
+      {authPromptProperty && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/20 bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900">Login or Sign Up Required</h3>
+            <p className="text-sm text-gray-600 mt-2">
+              To continue, sign in or create an account. We will submit your inquiry for {authPromptProperty.propertyType} in {authPromptProperty?.address?.city || "this location"} after authentication.
+            </p>
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  navigate("/login");
+                  setAuthPromptProperty(null);
+                }}
+                className="rounded-xl bg-blue-600 text-white font-semibold px-4 py-2.5 hover:bg-blue-700"
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigate("/register");
+                  setAuthPromptProperty(null);
+                }}
+                className="rounded-xl border border-gray-200 text-gray-800 font-semibold px-4 py-2.5 hover:bg-gray-50"
+              >
+                Sign Up
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAuthPromptProperty(null)}
+              className="mt-3 w-full text-sm text-gray-500 hover:text-gray-700"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

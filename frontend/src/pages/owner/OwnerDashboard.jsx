@@ -22,6 +22,7 @@ import {
   FileText,
   Download,
   Mail,
+  Phone,
   MessageCircle,
   Sparkles,
   Rocket,
@@ -109,18 +110,21 @@ const OwnerDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [recentComplianceDocs, setRecentComplianceDocs] = useState([]);
+  const [recentInquiries, setRecentInquiries] = useState([]);
+  const [updatingInquiryId, setUpdatingInquiryId] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [{ data }, { data: leaseData }, { data: rentData }, { data: maintenanceData }, { data: complianceData }, { data: analyticsData }] = await Promise.all([
+        const [{ data }, { data: leaseData }, { data: rentData }, { data: maintenanceData }, { data: complianceData }, { data: analyticsData }, { data: inquiryData }] = await Promise.all([
           api.get("/owner/dashboard"),
           api.get("/owner/leases"),
           api.get("/owner/rent"),
           api.get("/owner/maintenance"),
           api.get("/owner/compliance-documents"),
           api.get("/owner/analytics"),
+          api.get("/owner/inquiries"),
         ]);
 
         setStats(data.stats);
@@ -136,6 +140,7 @@ const OwnerDashboard = () => {
         const rents = rentData?.rents || [];
         const requests = maintenanceData?.requests || [];
         const documents = complianceData?.documents || [];
+        const inquiries = inquiryData?.inquiries || [];
 
         const expiringLeases = leases.filter((lease) => {
           const endDate = new Date(lease.leaseEndDate);
@@ -224,6 +229,7 @@ const OwnerDashboard = () => {
         }
 
         setRecentComplianceDocs(documents.slice(0, 6));
+        setRecentInquiries(inquiries.slice(0, 6));
 
         setAlerts(nextAlerts);
       } catch {
@@ -304,6 +310,19 @@ const OwnerDashboard = () => {
     }
   };
 
+  const updateInquiryStatus = async (inquiryId, status) => {
+    try {
+      setUpdatingInquiryId(inquiryId);
+      await api.patch(`/owner/inquiries/${inquiryId}/status`, { status });
+      setRecentInquiries((prev) => prev.map((item) => (item._id === inquiryId ? { ...item, status } : item)));
+      toast.success("Inquiry status updated.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Unable to update inquiry status.");
+    } finally {
+      setUpdatingInquiryId("");
+    }
+  };
+
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-blue-100 via-purple-50 to-indigo-150 pb-8">
       <div className="absolute top-0 right-0 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl animate-blob" />
@@ -312,6 +331,15 @@ const OwnerDashboard = () => {
       <PageHeader
         title="Dashboard"
         subtitle="Welcome back. Here is your live portfolio command center with clear priorities."
+        action={
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            <Home size={14} /> Back to Home
+          </button>
+        }
       />
 
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 px-6 py-7 sm:px-8 sm:py-8 shadow-2xl animate-fade-up">
@@ -340,8 +368,63 @@ const OwnerDashboard = () => {
         <MetricCard title="Total Properties" value={stats?.totalProperties || 0} subtitle="Across all locations" icon={Building2} accent="blue" />
         <MetricCard title="Active Leases" value={stats?.activeLeases || 0} subtitle="Tenant agreements running" icon={Users} accent="green" />
         <MetricCard title="Pending Rent" value={formatCurrency(pendingRent)} subtitle="Awaiting payment" icon={Wallet} accent="amber" />
-        <MetricCard title="Open Requests" value={stats?.openMaintenanceRequests || 0} subtitle="Maintenance to resolve" icon={Wrench} accent="rose" />
+        <MetricCard title="New Inquiries" value={stats?.newInquiries || 0} subtitle="Interest from prospective tenants" icon={Mail} accent="rose" />
       </div>
+
+      <section className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <MessageCircle size={18} className="text-blue-600" /> Recent Property Inquiries
+          </h3>
+          <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-blue-700">
+            {stats?.totalInquiries || 0} total
+          </span>
+        </div>
+
+        {recentInquiries.length === 0 ? (
+          <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            No inquiries received yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {recentInquiries.map((inquiry) => (
+              <div key={inquiry._id} className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-slate-50 p-3.5 hover:shadow-md transition-all duration-200">
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {inquiry.property?.propertyType || "Property"} - {inquiry.property?.address?.city || "N/A"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-600">Inquirer: {inquiry.inquirer?.name || "N/A"}</p>
+                    <p className="text-xs text-gray-500">Email: {inquiry.inquirer?.email || "N/A"}</p>
+                    <p className="text-xs text-gray-500 inline-flex items-center gap-1"><Phone size={12} /> {inquiry.inquirer?.phone || "N/A"}</p>
+                    {inquiry.message ? (
+                      <p className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1.5 text-xs text-blue-700">
+                        {inquiry.message}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1 border-t border-gray-100">
+                    <p className="text-[11px] text-gray-500">Received on {new Date(inquiry.createdAt).toLocaleString()}</p>
+                    <div className="w-full sm:w-auto">
+                      <select
+                        value={inquiry.status || "New"}
+                        onChange={(e) => updateInquiryStatus(inquiry._id, e.target.value)}
+                        disabled={updatingInquiryId === inquiry._id}
+                        className="w-full sm:w-auto rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-60"
+                      >
+                        <option value="New">New</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Contacted">Contacted</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <section className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">

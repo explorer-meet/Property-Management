@@ -25,6 +25,32 @@ const COUNTRY_CODES = [
   { value: "+971", label: "AE (+971)" },
 ];
 
+const submitPendingInquiryIfAny = async () => {
+  const rawPendingInquiry = localStorage.getItem("pendingPropertyInquiry");
+  if (!rawPendingInquiry) return;
+
+  try {
+    const pendingInquiry = JSON.parse(rawPendingInquiry);
+    if (!pendingInquiry?.propertyId) {
+      localStorage.removeItem("pendingPropertyInquiry");
+      return;
+    }
+
+    await api.post(`/properties/${pendingInquiry.propertyId}/inquiries`, {
+      message: pendingInquiry.message || "I am interested in this property.",
+    });
+    localStorage.removeItem("pendingPropertyInquiry");
+    toast.success("Your property inquiry has been submitted.");
+  } catch (err) {
+    const status = err?.response?.status;
+    if ([400, 404, 409].includes(status)) {
+      localStorage.removeItem("pendingPropertyInquiry");
+      return;
+    }
+    toast.error("Registered successfully, but inquiry could not be submitted right now.");
+  }
+};
+
 const Register = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -66,6 +92,9 @@ const Register = () => {
       };
       const { data } = await api.post("/auth/signup", payload);
       dispatch(setCredentials({ user: data.user, token: data.token }));
+
+      await submitPendingInquiryIfAny();
+
       toast.success("Registration successful!");
       navigate(data.user.role === "owner" ? "/owner/dashboard" : "/tenant/dashboard");
     } catch (err) {

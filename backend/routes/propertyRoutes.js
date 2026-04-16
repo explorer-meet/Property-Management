@@ -5,12 +5,13 @@ const { uploadMaintenancePhotos, uploadComplianceDocument } = require("../middle
 const {
   signUp, signIn, forgotPassword, getProfile, updateProfile,
   addProperty, getOwnerProperties, getPropertyById, updateProperty, deleteProperty,
+  getPublicProperties, createPropertyInquiry, getOwnerInquiries, updateOwnerInquiryStatus,
   getTenantUsers, assignTenant, getOwnerLeases, updateLease, terminateLease,
   generateRentRecord, getOwnerRentPayments, markRentPaid, markRentOverdue,
   getVacantProperties, updatePropertyStatus,
   getOwnerMaintenanceRequests, updateMaintenanceStatus, addCommentToRequest,
   getOwnerDashboard, getOwnerAnalytics, exportOwnerAnalyticsCsv,
-  getTenantDashboard, getTenantLease, getTenantRentHistory,
+  getTenantDashboard, getTenantLease, getTenantRentHistory, getTenantInquiries,
   createMaintenanceRequest, getTenantMaintenanceRequests,
   createMoveOutRequest, getTenantMoveOutRequests,
   getOwnerMoveOutRequests, decideMoveOutRequest, completeMoveOutRequest,
@@ -30,10 +31,15 @@ router.post("/auth/forgot-password", forgotPassword);
 router.get("/auth/profile", verifyToken, getProfile);
 router.put("/auth/profile", verifyToken, updateProfile);
 
+// ── Public – Property Discovery ──────────────
+router.get("/properties/public", getPublicProperties);
+
 // ── Owner – Dashboard ─────────────────────────
 router.get("/owner/dashboard", verifyToken, requireOwner, getOwnerDashboard);
 router.get("/owner/analytics", verifyToken, requireOwner, getOwnerAnalytics);
 router.get("/owner/analytics/export", verifyToken, requireOwner, exportOwnerAnalyticsCsv);
+router.get("/owner/inquiries", verifyToken, requireOwner, getOwnerInquiries);
+router.patch("/owner/inquiries/:id/status", verifyToken, requireOwner, updateOwnerInquiryStatus);
 
 // ── Owner – Properties ────────────────────────
 router.post("/owner/properties", verifyToken, requireOwner, addProperty);
@@ -42,6 +48,7 @@ router.get("/owner/properties/:id", verifyToken, requireOwner, getPropertyById);
 router.put("/owner/properties/:id", verifyToken, requireOwner, updateProperty);
 router.delete("/owner/properties/:id", verifyToken, requireOwner, deleteProperty);
 router.patch("/owner/properties/:id/status", verifyToken, requireOwner, updatePropertyStatus);
+router.post("/properties/:id/inquiries", verifyToken, createPropertyInquiry);
 
 // ── Owner – Vacancy ───────────────────────────
 router.get("/owner/vacancies", verifyToken, requireOwner, getVacantProperties);
@@ -93,6 +100,7 @@ router.get("/tenant/dashboard", verifyToken, requireTenant, getTenantDashboard);
 // ── Tenant – Lease & Rent ─────────────────────
 router.get("/tenant/lease", verifyToken, requireTenant, getTenantLease);
 router.get("/tenant/rent-history", verifyToken, requireTenant, getTenantRentHistory);
+router.get("/tenant/inquiries", verifyToken, requireTenant, getTenantInquiries);
 router.get("/tenant/renewals", verifyToken, requireTenant, getTenantLeaseRenewals);
 router.patch("/tenant/renewals/:id/decision", verifyToken, requireTenant, decideLeaseRenewal);
 

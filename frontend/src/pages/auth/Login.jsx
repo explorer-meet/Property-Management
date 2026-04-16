@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import toast from "react-hot-toast";
@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import api from "../../utils/api";
 import { setCredentials } from "../../app/slices/authSlice";
+import { Alert } from "../../components/UI";
 
 const FEATURES = [
   { icon: Home,       text: "Manage all your properties in one place" },
@@ -16,14 +17,44 @@ const FEATURES = [
   { icon: Wrench,     text: "Maintenance requests resolved faster" },
 ];
 
+const submitPendingInquiryIfAny = async () => {
+  const rawPendingInquiry = localStorage.getItem("pendingPropertyInquiry");
+  if (!rawPendingInquiry) return;
+
+  try {
+    const pendingInquiry = JSON.parse(rawPendingInquiry);
+    if (!pendingInquiry?.propertyId) {
+      localStorage.removeItem("pendingPropertyInquiry");
+      return;
+    }
+
+    await api.post(`/properties/${pendingInquiry.propertyId}/inquiries`, {
+      message: pendingInquiry.message || "I am interested in this property.",
+    });
+    localStorage.removeItem("pendingPropertyInquiry");
+    toast.success("Your property inquiry has been submitted.");
+  } catch (err) {
+    const status = err?.response?.status;
+    if ([400, 404, 409].includes(status)) {
+      localStorage.removeItem("pendingPropertyInquiry");
+      return;
+    }
+    toast.error("Logged in, but inquiry could not be submitted right now.");
+  }
+};
+
 const Login = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const errorRef = useRef(null);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,10 +62,15 @@ const Login = () => {
     try {
       const { data } = await api.post("/auth/signin", form);
       dispatch(setCredentials({ user: data.user, token: data.token }));
+      await submitPendingInquiryIfAny();
       toast.success(`Welcome back, ${data.user.name}!`);
       navigate(data.user.role === "owner" ? "/owner/dashboard" : "/tenant/dashboard");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Login failed.");
+    } catch {
+      const msg = "Invalid username or password. Please provide valid credentials.";
+      setErrorMsg(msg);
+      if (errorRef.current) {
+        errorRef.current.removeAttribute("hidden");
+      }
     } finally {
       setLoading(false);
     }
@@ -167,6 +203,15 @@ const Login = () => {
                 </span>
               ) : "Sign In"}
             </button>
+
+            {/* ── Persistent error box ── */}
+            <div ref={errorRef} hidden className="mt-4">
+              <Alert
+                type="error"
+                title="Login Failed"
+                message={errorMsg || "Invalid username or password. Please provide valid credentials."}
+              />
+            </div>
           </form>
 
           <div className="relative flex items-center my-6">

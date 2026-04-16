@@ -8,6 +8,7 @@ const MaintenanceRequest = require("../models/MaintenanceRequest");
 const MoveOutRequest = require("../models/MoveOutRequest");
 const ComplianceDocument = require("../models/ComplianceDocument");
 const LeaseRenewal = require("../models/LeaseRenewal");
+const PropertyInquiry = require("../models/PropertyInquiry");
 const Notification = require("../models/Notification");
 const PDFDocument = require("pdfkit");
 const { StatusCodes } = require("http-status-codes");
@@ -322,6 +323,28 @@ const getOwnerProperties = async (req, res) => {
   try {
     const properties = await Property.find({ owner: req.user.userId, isActive: true })
       .sort({ createdAt: -1 });
+    res.status(StatusCodes.OK).json({ properties });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getPublicProperties = async (req, res) => {
+  try {
+    const { city, propertyType } = req.query;
+    const query = { isActive: true };
+
+    if (city) {
+      query["address.city"] = { $regex: String(city).trim(), $options: "i" };
+    }
+    if (propertyType) {
+      query.propertyType = propertyType;
+    }
+
+    const properties = await Property.find(query)
+      .populate("owner", "name email phone")
+      .sort({ createdAt: -1 });
+
     res.status(StatusCodes.OK).json({ properties });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -809,7 +832,7 @@ const getOwnerDashboard = async (req, res) => {
   try {
     const ownerId = req.user.userId;
     const [totalProperties, vacantProperties, occupiedProperties, activeLeases,
-      totalRent, pendingRent, overdueRent, openMaintenanceRequests] = await Promise.all([
+      totalRent, pendingRent, overdueRent, openMaintenanceRequests, totalInquiries, newInquiries] = await Promise.all([
       Property.countDocuments({ owner: ownerId, isActive: true }),
       Property.countDocuments({ owner: ownerId, isActive: true, status: "Vacant" }),
       Property.countDocuments({ owner: ownerId, isActive: true, status: "Occupied" }),
@@ -818,6 +841,8 @@ const getOwnerDashboard = async (req, res) => {
       RentPayment.countDocuments({ owner: ownerId, status: "Pending" }),
       RentPayment.countDocuments({ owner: ownerId, status: "Overdue" }),
       MaintenanceRequest.countDocuments({ owner: ownerId, status: { $in: ["Open", "In Progress"] } }),
+      PropertyInquiry.countDocuments({ owner: ownerId }),
+      PropertyInquiry.countDocuments({ owner: ownerId, status: "New" }),
     ]);
 
     const paidRentAgg = await RentPayment.aggregate([
@@ -836,9 +861,121 @@ const getOwnerDashboard = async (req, res) => {
         pendingRent,
         overdueRent,
         openMaintenanceRequests,
+        totalInquiries,
+        newInquiries,
         totalPaidAmount,
       },
     });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const createPropertyInquiry = async (req, res) => {
+  try {
+    const { message } = req.body;
+    const property = await Property.findOne({ _id: req.params.id, isActive: true }).populate("owner", "name email");
+
+    if (!property) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
+    }
+
+    if (String(property.owner?._id) === String(req.user.userId)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "You cannot inquire about your own property." });
+    }
+
+    const existing = await PropertyInquiry.findOne({ property: property._id, inquirer: req.user.userId });
+    if (existing) {
+      return res.status(StatusCodes.CONFLICT).json({ message: "You have already submitted an inquiry for this property." });
+    }
+
+    const inquiry = await PropertyInquiry.create({
+      property: property._id,
+      owner: property.owner?._id,
+      inquirer: req.user.userId,
+      message: (message || "").trim(),
+    });
+
+    await createNotification({
+      recipient: property.owner?._id,
+      role: "owner",
+      title: "New property inquiry",
+      message: `${req.user.name || "A user"} is interested in your property in ${property.address?.city || "your listing"}.`,
+      type: "system",
+      actionPath: "/owner/dashboard",
+      metadata: { inquiryId: inquiry._id, propertyId: property._id },
+    });
+
+    await sendMailEvent({
+      to: property.owner?.email,
+      subject: "New inquiry for your property",
+      recipientName: property.owner?.name,
+      heading: "You have received a new inquiry",
+      lead: "A user has expressed interest in one of your property listings.",
+      highlights: [
+        `Property: ${property.propertyType} in ${property.address?.city || "N/A"}`,
+        `Interested user: ${req.user.name || req.user.email || "N/A"}`,
+        message ? `Message: ${message}` : null,
+      ],
+      actionLabel: "Open Owner Dashboard",
+      actionPath: "/owner/dashboard",
+      accent: "#2563eb",
+    });
+
+    res.status(StatusCodes.CREATED).json({ message: "Inquiry submitted successfully.", inquiry });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getOwnerInquiries = async (req, res) => {
+  try {
+    const inquiries = await PropertyInquiry.find({ owner: req.user.userId })
+      .populate("property", "propertyType address status numberOfRooms")
+      .populate("inquirer", "name email phone")
+      .sort({ createdAt: -1 });
+
+    res.status(StatusCodes.OK).json({ inquiries });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updateOwnerInquiryStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const allowedStatus = ["New", "In Progress", "Contacted", "Closed"];
+
+    if (!allowedStatus.includes(status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid inquiry status." });
+    }
+
+    const inquiry = await PropertyInquiry.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user.userId },
+      { status },
+      { new: true }
+    )
+      .populate("property", "propertyType address status numberOfRooms")
+      .populate("inquirer", "name email phone");
+
+    if (!inquiry) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Inquiry not found." });
+    }
+
+    res.status(StatusCodes.OK).json({ message: "Inquiry status updated.", inquiry });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getTenantInquiries = async (req, res) => {
+  try {
+    const inquiries = await PropertyInquiry.find({ inquirer: req.user.userId })
+      .populate("property", "propertyType address status numberOfRooms")
+      .populate("owner", "name email phone")
+      .sort({ createdAt: -1 });
+
+    res.status(StatusCodes.OK).json({ inquiries });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -1932,9 +2069,13 @@ module.exports = {
   // Owner – Property
   addProperty,
   getOwnerProperties,
+  getPublicProperties,
   getPropertyById,
   updateProperty,
   deleteProperty,
+  createPropertyInquiry,
+  getOwnerInquiries,
+  updateOwnerInquiryStatus,
   // Owner – Tenants
   getTenantUsers,
   assignTenant,
@@ -1963,6 +2104,7 @@ module.exports = {
   getTenantDashboard,
   getTenantLease,
   getTenantRentHistory,
+  getTenantInquiries,
   createMaintenanceRequest,
   getTenantMaintenanceRequests,
   createMoveOutRequest,

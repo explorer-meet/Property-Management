@@ -7,76 +7,142 @@ body {
   @apply bg-gray-50 text-gray-900;
 }
 
+/* ─────────────────────────────────────────────
+   BUTTONS
+───────────────────────────────────────────── */
 .btn-primary {
-  @apply bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600
+  @apply bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500
          text-white font-semibold py-2 px-4 rounded-xl transition-all duration-200
-         shadow-[0_2px_12px_rgba(59,130,246,0.30)] hover:shadow-[0_4px_20px_rgba(59,130,246,0.45)]
-         active:scale-[0.98] cursor-pointer;
+         shadow-[0_2px_14px_rgba(79,70,229,0.35)] hover:shadow-[0_6px_24px_rgba(79,70,229,0.45)]
+         active:scale-[0.97] cursor-pointer;
 }
 
 .btn-secondary {
   @apply bg-white hover:bg-gray-50 text-gray-700 font-semibold py-2 px-4 rounded-xl
          border border-gray-200 hover:border-gray-300 transition-all duration-200
-         shadow-sm hover:shadow-md active:scale-[0.98] cursor-pointer;
+         shadow-sm hover:shadow-md active:scale-[0.97] cursor-pointer;
 }
 
 .btn-danger {
   @apply bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500
          text-white font-semibold py-2 px-4 rounded-xl transition-all duration-200
-         shadow-[0_2px_12px_rgba(239,68,68,0.28)] hover:shadow-[0_4px_16px_rgba(239,68,68,0.40)]
-         active:scale-[0.98] cursor-pointer;
+         shadow-[0_2px_12px_rgba(239,68,68,0.30)] hover:shadow-[0_6px_20px_rgba(239,68,68,0.42)]
+         active:scale-[0.97] cursor-pointer;
 }
 
+.btn-success {
+  @apply bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500
+         text-white font-semibold py-2 px-4 rounded-xl transition-all duration-200
+         shadow-[0_2px_12px_rgba(16,185,129,0.30)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.42)]
+         active:scale-[0.97] cursor-pointer;
+}
+
+/* ─────────────────────────────────────────────
+   CARDS
+───────────────────────────────────────────── */
 .card {
-  @apply bg-white rounded-2xl shadow-[0_1px_12px_rgba(0,0,0,0.06)] border border-gray-100 p-6;
+  @apply bg-white rounded-2xl shadow-[0_1px_16px_rgba(0,0,0,0.07)] border border-gray-100/80 p-6
+         transition-shadow duration-200 hover:shadow-[0_4px_24px_rgba(0,0,0,0.10)];
 }
 
+/* ─────────────────────────────────────────────
+   INPUTS
+───────────────────────────────────────────── */
 .input-field {
   @apply w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800
-         focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400
-         transition-all duration-200 bg-white placeholder:text-gray-400;
+         focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400
+         transition-all duration-200 bg-white placeholder:text-gray-400
+         hover:border-gray-300;
 }
 
+.select-field {
+  @apply w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800
+         focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400
+         transition-all duration-200 bg-white cursor-pointer
+         hover:border-gray-300;
+}
+
+/* ─────────────────────────────────────────────
+   BADGES
+───────────────────────────────────────────── */
 .badge-green {
-  @apply bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-0.5 rounded-full ring-1 ring-emerald-200;
+  @apply inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs font-semibold
+         px-2.5 py-1 rounded-full ring-1 ring-emerald-200;
 }
-
 .badge-yellow {
-  @apply bg-amber-50 text-amber-700 text-xs font-semibold px-2.5 py-0.5 rounded-full ring-1 ring-amber-200;
+  @apply inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs font-semibold
+         px-2.5 py-1 rounded-full ring-1 ring-amber-200;
 }
-
 .badge-red {
-  @apply bg-red-50 text-red-700 text-xs font-semibold px-2.5 py-0.5 rounded-full ring-1 ring-red-200;
+  @apply inline-flex items-center gap-1.5 bg-red-50 text-red-700 text-xs font-semibold
+         px-2.5 py-1 rounded-full ring-1 ring-red-200;
 }
-
 .badge-blue {
-  @apply bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-0.5 rounded-full ring-1 ring-blue-200;
+  @apply inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-xs font-semibold
+         px-2.5 py-1 rounded-full ring-1 ring-blue-200;
 }
-
 .badge-gray {
-  @apply bg-gray-100 text-gray-600 text-xs font-semibold px-2.5 py-0.5 rounded-full ring-1 ring-gray-200;
+  @apply inline-flex items-center gap-1.5 bg-gray-100 text-gray-600 text-xs font-semibold
+         px-2.5 py-1 rounded-full ring-1 ring-gray-200;
+}
+.badge-purple {
+  @apply inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 text-xs font-semibold
+         px-2.5 py-1 rounded-full ring-1 ring-purple-200;
 }
 
-/* ── Shimmer animation for CTA highlight ── */
+/* ─────────────────────────────────────────────
+   TOAST OVERRIDES (react-hot-toast)
+───────────────────────────────────────────── */
+.toast-base {
+  @apply !rounded-2xl !shadow-xl !text-sm !font-medium !py-3.5 !px-4 !max-w-sm;
+}
+
+/* ─────────────────────────────────────────────
+   ANIMATIONS
+───────────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: -200% center; }
   100% { background-position: 200% center; }
 }
 .btn-shimmer {
-  background: linear-gradient(90deg, #1d4ed8 20%, #60a5fa 50%, #1d4ed8 80%);
+  background: linear-gradient(90deg, #1d4ed8 20%, #818cf8 50%, #1d4ed8 80%);
   background-size: 200% auto;
   animation: shimmer 2.6s linear infinite;
 }
 
-/* ── Fade-up entrance animation ── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-up   { animation: fadeUp 0.55s ease-out both; }
-.animate-fade-up-1 { animation: fadeUp 0.55s 0.10s ease-out both; }
-.animate-fade-up-2 { animation: fadeUp 0.55s 0.20s ease-out both; }
-.animate-fade-up-3 { animation: fadeUp 0.55s 0.30s ease-out both; }
+.animate-fade-up   { animation: fadeUp 0.50s ease-out both; }
+.animate-fade-up-1 { animation: fadeUp 0.50s 0.08s ease-out both; }
+.animate-fade-up-2 { animation: fadeUp 0.50s 0.16s ease-out both; }
+.animate-fade-up-3 { animation: fadeUp 0.50s 0.24s ease-out both; }
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.92) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+.animate-modal-in { animation: modalIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-overlay-in { animation: overlayIn 0.18s ease-out both; }
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-right { animation: slideInRight 0.30s ease-out both; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
 
 /* ── Floating blob pulse ── */
 @keyframes blobPulse {
