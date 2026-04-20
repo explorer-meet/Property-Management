@@ -76,6 +76,33 @@ const FEATURES = [
   },
 ];
 
+const FEATURE_CARD_STYLES = [
+  {
+    shell: "border-blue-200 bg-gradient-to-br from-blue-50/70 to-white hover:shadow-[0_14px_36px_rgba(37,99,235,0.18)]",
+    dot: "bg-blue-400/20",
+  },
+  {
+    shell: "border-violet-200 bg-gradient-to-br from-violet-50/70 to-white hover:shadow-[0_14px_36px_rgba(124,58,237,0.18)]",
+    dot: "bg-violet-400/20",
+  },
+  {
+    shell: "border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-white hover:shadow-[0_14px_36px_rgba(5,150,105,0.16)]",
+    dot: "bg-emerald-400/20",
+  },
+  {
+    shell: "border-amber-200 bg-gradient-to-br from-amber-50/80 to-white hover:shadow-[0_14px_36px_rgba(217,119,6,0.16)]",
+    dot: "bg-amber-400/20",
+  },
+  {
+    shell: "border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-white hover:shadow-[0_14px_36px_rgba(79,70,229,0.18)]",
+    dot: "bg-indigo-400/20",
+  },
+  {
+    shell: "border-rose-200 bg-gradient-to-br from-rose-50/70 to-white hover:shadow-[0_14px_36px_rgba(225,29,72,0.16)]",
+    dot: "bg-rose-400/20",
+  },
+];
+
 const HOW_IT_WORKS = [
   { step: "01", title: "Create your account", desc: "Sign up as a Property Owner in under 60 seconds." },
   { step: "02", title: "Add your properties", desc: "Enter address, type and unit count — done in two clicks." },
@@ -107,6 +134,27 @@ const TESTIMONIALS = [
   },
 ];
 
+const HERO_HIGHLIGHTS = [
+  {
+    icon: TrendingUp,
+    title: "Revenue Visibility",
+    desc: "Track rent collection, overdue trends and occupancy in one live panel.",
+    metric: "98% On-time Collection",
+  },
+  {
+    icon: Wrench,
+    title: "Maintenance Automation",
+    desc: "Resolve maintenance requests faster with status updates and comments.",
+    metric: "3x Faster Resolution",
+  },
+  {
+    icon: Users,
+    title: "Tenant Lifecycle",
+    desc: "Manage onboarding, leases and renewals without spreadsheets.",
+    metric: "850+ Happy Tenants",
+  },
+];
+
 const getStoredUser = () => {
   try {
     return JSON.parse(localStorage.getItem("pms_user") || "null");
@@ -125,7 +173,11 @@ const LandingPage = () => {
   const [authPromptProperty, setAuthPromptProperty] = useState(null);
   const [submittingInquiryId, setSubmittingInquiryId] = useState("");
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [heroHighlightIndex, setHeroHighlightIndex] = useState(0);
+  const [testimonialIndex, setTestimonialIndex] = useState(0);
   const carouselTimerRef = useRef(null);
+  const heroTimerRef = useRef(null);
+  const testimonialTimerRef = useRef(null);
 
   const VISIBLE = 3;
 
@@ -147,6 +199,26 @@ const LandingPage = () => {
     }
     return () => { if (carouselTimerRef.current) clearInterval(carouselTimerRef.current); };
   }, [vacantProperties.length, startCarouselTimer]);
+
+  useEffect(() => {
+    if (heroTimerRef.current) clearInterval(heroTimerRef.current);
+    heroTimerRef.current = setInterval(() => {
+      setHeroHighlightIndex((prev) => (prev + 1) % HERO_HIGHLIGHTS.length);
+    }, 2800);
+    return () => {
+      if (heroTimerRef.current) clearInterval(heroTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (testimonialTimerRef.current) clearInterval(testimonialTimerRef.current);
+    testimonialTimerRef.current = setInterval(() => {
+      setTestimonialIndex((prev) => (prev + 1) % TESTIMONIALS.length);
+    }, 5000);
+    return () => {
+      if (testimonialTimerRef.current) clearInterval(testimonialTimerRef.current);
+    };
+  }, []);
 
   const carouselPrev = () => {
     setCarouselIndex((prev) => (prev <= 0 ? Math.max(0, vacantProperties.length - VISIBLE) : prev - 1));
@@ -365,6 +437,37 @@ const LandingPage = () => {
                   <CheckCircle2 size={15} className="text-green-400" /> {t}
                 </span>
               ))}
+            </div>
+
+            <div className="mt-8 rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-md max-w-xl">
+              <div className="flex items-start gap-3">
+                {(() => {
+                  const ActiveIcon = HERO_HIGHLIGHTS[heroHighlightIndex].icon;
+                  return (
+                    <div className="rounded-xl bg-white/15 p-2.5 text-cyan-200">
+                      <ActiveIcon size={18} />
+                    </div>
+                  );
+                })()}
+                <div className="min-h-[68px]">
+                  <p className="text-sm font-bold text-white">{HERO_HIGHLIGHTS[heroHighlightIndex].title}</p>
+                  <p className="text-xs text-blue-100 mt-1 leading-relaxed">{HERO_HIGHLIGHTS[heroHighlightIndex].desc}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-200 mt-2">
+                    {HERO_HIGHLIGHTS[heroHighlightIndex].metric}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex gap-1.5">
+                {HERO_HIGHLIGHTS.map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setHeroHighlightIndex(idx)}
+                    className={`h-1.5 rounded-full transition-all ${idx === heroHighlightIndex ? "w-7 bg-cyan-300" : "w-2 bg-white/35"}`}
+                    aria-label={`Hero highlight ${idx + 1}`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
 
@@ -598,9 +701,9 @@ const LandingPage = () => {
       </section>
 
       {/* ── FEATURES ── */}
-      <section id="features" className="py-24 bg-white">
+      <section id="features" className="py-24 bg-gradient-to-b from-white via-sky-50/50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <div className="text-center mb-12">
             <span className="text-sm font-semibold text-blue-600 uppercase tracking-widest">Everything you need</span>
             <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-3">
               Built for Property Owners &amp; Tenants
@@ -610,16 +713,57 @@ const LandingPage = () => {
             </p>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
+            <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-700 p-6 text-white shadow-[0_14px_30px_rgba(37,99,235,0.28)]">
+              <div className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-white/10" />
+              <div className="relative">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-100">
+                  <Building2 size={14} /> For Owners
+                </p>
+                <h3 className="mt-2 text-2xl font-extrabold">Operate Like a Pro</h3>
+                <p className="mt-2 text-sm text-blue-100 max-w-md">
+                  Keep occupancy high, collect rent on time, and close leads faster with one command center.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold">
+                  <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1">Lead Tracking</span>
+                  <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1">Automated Rent Flow</span>
+                  <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1">Vacancy Visibility</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-[0_14px_30px_rgba(15,23,42,0.28)]">
+              <div className="absolute -bottom-10 -left-10 h-28 w-28 rounded-full bg-white/5" />
+              <div className="relative">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  <Users size={14} /> For Tenants
+                </p>
+                <h3 className="mt-2 text-2xl font-extrabold">Live With Clarity</h3>
+                <p className="mt-2 text-sm text-slate-200 max-w-md">
+                  Track dues, raise requests, and manage lease updates without uncertainty or follow-up friction.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold">
+                  <span className="rounded-full border border-white/20 bg-white/5 px-2.5 py-1">Transparent Payments</span>
+                  <span className="rounded-full border border-white/20 bg-white/5 px-2.5 py-1">Faster Support</span>
+                  <span className="rounded-full border border-white/20 bg-white/5 px-2.5 py-1">Lease Timeline</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="group p-6 bg-white rounded-2xl border border-gray-100 hover:border-blue-200 hover:shadow-[0_8px_40px_rgba(59,130,246,0.12)] transition-all duration-300 cursor-default">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${f.color} mb-4 group-hover:scale-110 transition-transform duration-300 shadow-sm`}>
+            {FEATURES.map((f, idx) => {
+              const tone = FEATURE_CARD_STYLES[idx % FEATURE_CARD_STYLES.length];
+              return (
+              <div key={f.title} className={`group relative overflow-hidden p-6 rounded-2xl border transition-all duration-300 cursor-default ${tone.shell}`}>
+                <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-70 group-hover:opacity-100 transition-opacity duration-300 ${tone.dot}`} />
+                <div className={`relative w-12 h-12 rounded-2xl flex items-center justify-center ${f.color} mb-4 group-hover:scale-110 transition-transform duration-300 shadow-sm`}>
                   <f.icon size={22} />
                 </div>
-                <h3 className="font-bold text-gray-900 text-lg mb-2">{f.title}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed">{f.desc}</p>
+                <h3 className="relative font-bold text-gray-900 text-lg mb-2">{f.title}</h3>
+                <p className="relative text-gray-500 text-sm leading-relaxed">{f.desc}</p>
               </div>
-            ))}
+            );})}
           </div>
         </div>
       </section>
@@ -702,28 +846,85 @@ const LandingPage = () => {
             <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-3">Loved by owners &amp; tenants</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t) => (
-              <div key={t.name} className="relative bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all duration-300 group overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-t-2xl" />
-                <div className="absolute top-4 right-5 text-6xl font-serif text-gray-100 leading-none select-none">&ldquo;</div>
-                <div className="flex gap-1 mb-4 relative">
-                  {Array.from({ length: t.stars }).map((_, i) => (
-                    <Star key={i} size={15} className="fill-amber-400 text-amber-400" />
+          <div className="max-w-4xl mx-auto">
+            <div className="relative bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_18px_40px_rgba(30,64,175,0.12)] overflow-hidden">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.08),transparent_45%)]" />
+              <div className="relative">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex gap-1 mb-4">
+                    {Array.from({ length: TESTIMONIALS[testimonialIndex].stars }).map((_, i) => (
+                      <Star key={i} size={16} className="fill-amber-400 text-amber-400" />
+                    ))}
+                  </div>
+                  <div className="text-5xl font-serif text-blue-100 leading-none select-none">&ldquo;</div>
+                </div>
+
+                <p className="text-gray-700 text-base sm:text-lg leading-relaxed min-h-[86px] transition-all duration-500">
+                  {TESTIMONIALS[testimonialIndex].text}
+                </p>
+
+                <div className="mt-6 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                      {TESTIMONIALS[testimonialIndex].avatar}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">{TESTIMONIALS[testimonialIndex].name}</p>
+                      <p className="text-gray-500 text-xs">{TESTIMONIALS[testimonialIndex].role}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTestimonialIndex((prev) => (prev <= 0 ? TESTIMONIALS.length - 1 : prev - 1))}
+                      className="w-9 h-9 rounded-full border border-gray-200 bg-white text-gray-600 hover:text-blue-600 hover:border-blue-300 flex items-center justify-center"
+                      aria-label="Previous testimonial"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTestimonialIndex((prev) => (prev + 1) % TESTIMONIALS.length)}
+                      className="w-9 h-9 rounded-full border border-gray-200 bg-white text-gray-600 hover:text-blue-600 hover:border-blue-300 flex items-center justify-center"
+                      aria-label="Next testimonial"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex justify-center gap-1.5">
+                  {TESTIMONIALS.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setTestimonialIndex(i)}
+                      className={`h-1.5 rounded-full transition-all duration-300 ${i === testimonialIndex ? "w-7 bg-blue-600" : "w-2 bg-gray-300 hover:bg-blue-300"}`}
+                      aria-label={`Go to testimonial ${i + 1}`}
+                    />
                   ))}
                 </div>
-                <p className="text-gray-600 text-sm leading-relaxed mb-5 relative">{t.text}</p>
-                <div className="flex items-center gap-3 relative">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                    {t.avatar}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
-                    <p className="text-gray-400 text-xs">{t.role}</p>
-                  </div>
-                </div>
               </div>
-            ))}
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {TESTIMONIALS.map((item, i) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() => setTestimonialIndex(i)}
+                  className={`text-left rounded-xl border p-3 transition-all ${
+                    i === testimonialIndex
+                      ? "border-blue-300 bg-blue-50 shadow-sm"
+                      : "border-gray-200 bg-white hover:border-blue-200"
+                  }`}
+                >
+                  <p className="text-xs font-semibold text-gray-900 truncate">{item.name}</p>
+                  <p className="text-[11px] text-gray-500 truncate">{item.role}</p>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </section>
