@@ -16,6 +16,7 @@ const propertySchema = new mongoose.Schema(
     },
     description: { type: String, trim: true },
     numberOfRooms: { type: Number, default: 1, min: 1 },
+    photoUrls: [{ type: String, trim: true }],
     status: {
       type: String,
       enum: ["Vacant", "Occupied"],

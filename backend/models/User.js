@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6 },
     countryCode: { type: String, trim: true, default: "+91" },
     phone: { type: String, trim: true, required: true },
+    profilePictureUrl: { type: String, trim: true, default: "" },
     role: { type: String, enum: ["owner", "tenant"], required: true },
     isActive: { type: Boolean, default: true },
     paymentDetails: {

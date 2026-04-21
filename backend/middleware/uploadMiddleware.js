@@ -93,8 +93,70 @@ const uploadPaymentQrCode = multer({
   },
 });
 
+const profileDir = path.join(__dirname, "..", "uploads", "profile");
+fs.mkdirSync(profileDir, { recursive: true });
+
+const profileStorage = multer.diskStorage({
+  destination: (_, __, cb) => {
+    cb(null, profileDir);
+  },
+  filename: (_, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    cb(null, `profile-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  },
+});
+
+const profileFilter = (_, file, cb) => {
+  if (file.mimetype && file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only image files are allowed."));
+  }
+};
+
+const uploadProfilePicture = multer({
+  storage: profileStorage,
+  fileFilter: profileFilter,
+  limits: {
+    fileSize: 3 * 1024 * 1024,
+    files: 1,
+  },
+});
+
+const propertyDir = path.join(__dirname, "..", "uploads", "properties");
+fs.mkdirSync(propertyDir, { recursive: true });
+
+const propertyStorage = multer.diskStorage({
+  destination: (_, __, cb) => {
+    cb(null, propertyDir);
+  },
+  filename: (_, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    cb(null, `property-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  },
+});
+
+const propertyFilter = (_, file, cb) => {
+  if (file.mimetype && file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only image files are allowed."));
+  }
+};
+
+const uploadPropertyPhotos = multer({
+  storage: propertyStorage,
+  fileFilter: propertyFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 20,
+  },
+});
+
 module.exports = {
   uploadMaintenancePhotos,
   uploadComplianceDocument,
   uploadPaymentQrCode,
+  uploadProfilePicture,
+  uploadPropertyPhotos,
 };

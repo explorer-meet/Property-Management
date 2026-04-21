@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Building2, Home, Users, DollarSign, Wrench, Shield,
   BarChart3, Bell, ChevronRight, ChevronLeft, Star, CheckCircle2,
-  ArrowRight, Menu, X, MapPin, TrendingUp, Clock,
+  ArrowRight, Menu, X, MapPin, TrendingUp, Clock, Download,
 } from "lucide-react";
 import { formatCurrencyCompact, formatCurrency } from "../utils/currency";
 import api from "../utils/api";
@@ -293,6 +293,25 @@ const LandingPage = () => {
       toast.error(errorMessage);
     } finally {
       setSubmittingInquiryId("");
+    }
+  };
+
+  const handleDownloadFeatures = async () => {
+    try {
+      const response = await api.get("/features/download", { responseType: "blob" });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `property-management-features-${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success("Features PDF downloaded successfully!");
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.error("Unable to download features PDF. Please try again.");
     }
   };
 
@@ -949,6 +968,13 @@ const LandingPage = () => {
               Get Started Free
               <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
             </Link>
+            <button
+              onClick={handleDownloadFeatures}
+              className="inline-flex items-center justify-center gap-2 bg-blue-600 border-2 border-white/30 hover:bg-blue-700 hover:border-white text-white font-bold px-8 py-4 rounded-xl transition-colors text-base group"
+            >
+              Download Features PDF
+              <Download size={18} className="group-hover:scale-110 transition-transform" />
+            </button>
             <Link
               to="/login"
               className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-white/50 hover:border-white text-white font-bold px-8 py-4 rounded-xl transition-colors text-base"
@@ -971,6 +997,9 @@ const LandingPage = () => {
           </div>
           <p className="text-sm text-slate-500">© {new Date().getFullYear()} PropManager. All rights reserved.</p>
           <div className="flex flex-wrap items-center justify-center gap-5 text-sm">
+            <button onClick={handleDownloadFeatures} className="hover:text-white transition-colors cursor-pointer bg-none border-none p-0">
+              Download Features
+            </button>
             <Link to="/privacy-policy" className="hover:text-white transition-colors">
               Privacy Policy
             </Link>

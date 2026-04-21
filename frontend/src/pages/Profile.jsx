@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
-import { User, Mail, Phone, ShieldCheck, Save, RefreshCw } from "lucide-react";
+import { User, Mail, Phone, ShieldCheck, Save, RefreshCw, Upload } from "lucide-react";
 import { PageHeader } from "../components/UI";
 import { setCredentials } from "../app/slices/authSlice";
 import api from "../utils/api";
@@ -18,9 +18,12 @@ const COUNTRY_CODES = [
 const Profile = () => {
   const dispatch = useDispatch();
   const { user, token } = useSelector((state) => state.auth);
+  const apiOrigin = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pictureUploading, setPictureUploading] = useState(false);
+  const [profilePictureUrl, setProfilePictureUrl] = useState("");
   const [form, setForm] = useState({
     firstName: "",
     middleName: "",
@@ -49,6 +52,19 @@ const Profile = () => {
           countryCode: fallbackCode,
           phone: normalizedPhone,
         });
+        setProfilePictureUrl(userProfile.profilePictureUrl || "");
+
+        if (token && userProfile?._id) {
+          dispatch(
+            setCredentials({
+              user: {
+                ...user,
+                ...userProfile,
+              },
+              token,
+            })
+          );
+        }
       } catch {
         toast.error("Failed to load profile.");
       } finally {
@@ -58,6 +74,48 @@ const Profile = () => {
 
     fetchProfile();
   }, []);
+
+  const resolveProfilePictureUrl = (url) => {
+    if (!url) return "";
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith("/")) return `${apiOrigin}${url}`;
+    return `${apiOrigin}/${url}`;
+  };
+
+  const handlePictureUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("profilePicture", file);
+
+    setPictureUploading(true);
+    try {
+      const { data } = await api.post("/auth/profile-picture", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const updatedUser = data.user || {};
+      setProfilePictureUrl(updatedUser.profilePictureUrl || data.profilePictureUrl || "");
+
+      dispatch(
+        setCredentials({
+          user: {
+            ...user,
+            ...updatedUser,
+          },
+          token,
+        })
+      );
+
+      toast.success("Profile picture updated.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to upload profile picture.");
+    } finally {
+      setPictureUploading(false);
+      e.target.value = "";
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -137,6 +195,35 @@ const Profile = () => {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
         <div className="xl:col-span-1 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm xl:sticky xl:top-8">
           <h3 className="text-base font-semibold text-gray-900 mb-4">Account Snapshot</h3>
+          <div className="mb-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex items-center gap-3">
+              {resolveProfilePictureUrl(profilePictureUrl || user?.profilePictureUrl) ? (
+                <img
+                  src={resolveProfilePictureUrl(profilePictureUrl || user?.profilePictureUrl)}
+                  alt="Profile"
+                  className="h-14 w-14 rounded-full object-cover border border-gray-200"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center border border-blue-200">
+                  {(user?.name || "U").charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Profile Picture</p>
+                <p className="text-xs text-gray-500">Visible across owner and tenant dashboards.</p>
+              </div>
+            </div>
+            <label className="mt-3 inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 cursor-pointer hover:bg-blue-100 transition-colors">
+              <Upload size={14} /> {pictureUploading ? "Uploading..." : "Upload Picture"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handlePictureUpload}
+                className="hidden"
+                disabled={pictureUploading}
+              />
+            </label>
+          </div>
           <div className="space-y-3 text-sm">
             <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
               <p className="text-xs text-gray-500">Name</p>

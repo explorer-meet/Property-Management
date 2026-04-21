@@ -97,6 +97,14 @@ const Sidebar = () => {
   const inactiveLinkClass = isOwner
     ? "text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
     : "text-slate-600 hover:bg-emerald-50 hover:text-emerald-700";
+  const apiOrigin = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
+  const profilePictureUrl = user?.profilePictureUrl
+    ? /^https?:\/\//i.test(user.profilePictureUrl)
+      ? user.profilePictureUrl
+      : user.profilePictureUrl.startsWith("/")
+        ? `${apiOrigin}${user.profilePictureUrl}`
+        : `${apiOrigin}/${user.profilePictureUrl}`
+    : "";
 
   const SidebarContent = () => (
     <div className={`relative flex flex-col h-full overflow-hidden bg-gradient-to-b ${brandPanelClass}`}>
@@ -121,34 +129,67 @@ const Sidebar = () => {
       {/* User Info */}
       <div className="relative px-5 py-4 border-b border-white/60">
         <div className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/80 p-3 backdrop-blur-sm shadow-sm">
-          <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${brandIconClass} flex items-center justify-center text-white font-bold text-sm shadow-sm`}>
-            {user?.name?.charAt(0)?.toUpperCase()}
-          </div>
+          {profilePictureUrl ? (
+            <img
+              src={profilePictureUrl}
+              alt="Profile"
+              className="w-9 h-9 rounded-full object-cover border border-white shadow-sm"
+            />
+          ) : (
+            <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${brandIconClass} flex items-center justify-center text-white font-bold text-sm shadow-sm`}>
+              {user?.name?.charAt(0)?.toUpperCase()}
+            </div>
+          )}
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900 truncate">{user?.name}</p>
-            <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+            {!isOwner ? <p className="text-xs text-slate-500 truncate">{user?.email}</p> : null}
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="relative min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <nav className="relative min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {links.map((section, idx) => {
           const isExpanded = expandedSections[section.section] === true;
           
+          // Map section names to colors for owner
+          const getSectionColors = (sectionName) => {
+            if (sectionName === "Dashboard & Overview") 
+              return { bg: "from-cyan-50 to-blue-50", border: "border-cyan-100", icon: "bg-cyan-500", header: "text-cyan-700", line: "from-cyan-300", activeBg: "bg-cyan-100", activeText: "text-cyan-700", activeBorder: "border-cyan-400" };
+            if (sectionName === "Property Management") 
+              return { bg: "from-indigo-50 to-purple-50", border: "border-indigo-100", icon: "bg-indigo-500", header: "text-indigo-700", line: "from-indigo-300", activeBg: "bg-indigo-100", activeText: "text-indigo-700", activeBorder: "border-indigo-400" };
+            if (sectionName === "Lease Management") 
+              return { bg: "from-violet-50 to-indigo-50", border: "border-violet-100", icon: "bg-violet-500", header: "text-violet-700", line: "from-violet-300", activeBg: "bg-violet-100", activeText: "text-violet-700", activeBorder: "border-violet-400" };
+            if (sectionName === "Financial & Operations") 
+              return { bg: "from-amber-50 to-yellow-50", border: "border-amber-100", icon: "bg-amber-500", header: "text-amber-700", line: "from-amber-300", activeBg: "bg-amber-100", activeText: "text-amber-700", activeBorder: "border-amber-400" };
+            if (sectionName === "Communication") 
+              return { bg: "from-rose-50 to-red-50", border: "border-rose-100", icon: "bg-rose-500", header: "text-rose-700", line: "from-rose-300", activeBg: "bg-rose-100", activeText: "text-rose-700", activeBorder: "border-rose-400" };
+            
+            // Tenant colors
+            if (sectionName === "Dashboard") 
+              return { bg: "from-cyan-50 to-blue-50", border: "border-cyan-100", icon: "bg-cyan-500", header: "text-cyan-700", line: "from-cyan-300", activeBg: "bg-cyan-100", activeText: "text-cyan-700", activeBorder: "border-cyan-400" };
+            if (sectionName === "My Tenancy") 
+              return { bg: "from-teal-50 to-emerald-50", border: "border-teal-100", icon: "bg-teal-500", header: "text-teal-700", line: "from-teal-300", activeBg: "bg-teal-100", activeText: "text-teal-700", activeBorder: "border-teal-400" };
+            
+            return { bg: "from-sky-50 to-indigo-50", border: "border-sky-100", icon: "bg-sky-500", header: "text-sky-700", line: "from-sky-300", activeBg: "bg-sky-100", activeText: "text-sky-700", activeBorder: "border-sky-400" };
+          };
+          
+          const colors = getSectionColors(section.section);
+          
           return (
-            <div key={idx} className={idx > 0 ? "mt-3" : ""}>
-              {/* Section Header - Clickable */}
+            <div key={idx} className={idx > 0 ? "mt-4" : ""}>
+              {/* Section Header - Clickable with Gradient */}
               <button
                 onClick={() => toggleSection(section.section)}
-                className="w-full px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-2 group"
+                className={`w-full px-3 py-2.5 mb-2 rounded-lg bg-gradient-to-r ${colors.bg} border ${colors.border} transition-all duration-200 flex items-center gap-2.5 group hover:shadow-md hover:scale-105 transform`}
               >
-                <ChevronDown 
-                  size={14} 
-                  className={`transition-transform duration-300 ${isExpanded ? "rotate-0" : "-rotate-90"}`} 
-                />
-                <span className="flex-1 text-left">{section.section}</span>
-                <span className="flex-1 h-px bg-gradient-to-r from-slate-300 to-transparent" />
+                <div className={`p-1.5 rounded-md ${colors.icon} flex-shrink-0`}>
+                  <ChevronDown 
+                    size={16} 
+                    className={`text-white transition-transform duration-300 ${isExpanded ? "rotate-0" : "-rotate-90"}`} 
+                  />
+                </div>
+                <span className={`flex-1 text-left text-xs font-bold tracking-wide ${colors.header}`}>{section.section}</span>
               </button>
               
               {/* Section Items - Collapsible */}
@@ -157,7 +198,7 @@ const Sidebar = () => {
                   isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
                 }`}
               >
-                <div className="space-y-1.5 mt-1.5">
+                <div className="space-y-1.5 pl-1">
                   {section.items.map(({ to, label, icon: Icon }) => (
                     <NavLink
                       key={to}
@@ -171,16 +212,16 @@ const Sidebar = () => {
                       }}
                       preventScrollReset
                       className={({ isActive }) =>
-                        `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                        `group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-l-3 ${
                           isActive
-                            ? activeLinkClass
-                            : inactiveLinkClass
+                            ? `${colors.activeBorder} ${colors.activeBg} ${colors.activeText}`
+                            : `border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-700`
                         }`
                       }
                     >
-                      <Icon size={18} className="transition-transform duration-200 group-hover:scale-110" />
+                      <Icon size={18} className="transition-transform duration-200 group-hover:scale-110 flex-shrink-0" />
                       <span className="flex-1">{label}</span>
-                      <ChevronRight size={14} className="opacity-40 transition-transform duration-200 group-hover:translate-x-0.5" />
+                      <ChevronRight size={14} className="opacity-40 transition-transform duration-200 group-hover:translate-x-0.5 flex-shrink-0" />
                     </NavLink>
                   ))}
                 </div>

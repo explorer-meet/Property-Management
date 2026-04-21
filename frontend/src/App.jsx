@@ -23,6 +23,7 @@ import Notifications from "./pages/Notifications";
 // Owner
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
 import Properties from "./pages/owner/Properties";
+import PropertyWorkspace from "./pages/owner/PropertyWorkspace";
 import TenantsLeases from "./pages/owner/TenantsLeases";
 import LeaseRenewals from "./pages/owner/LeaseRenewals";
 import MoveOutRequests from "./pages/owner/MoveOutRequests";
@@ -98,6 +99,7 @@ function App() {
             <Route index element={<Navigate to="/owner/dashboard" replace />} />
             <Route path="dashboard" element={<OwnerDashboard />} />
             <Route path="properties" element={<Properties />} />
+            <Route path="properties/:propertyId/manage" element={<PropertyWorkspace />} />
             <Route path="tenants" element={<TenantsLeases />} />
             <Route path="renewals" element={<LeaseRenewals />} />
             <Route path="move-out" element={<MoveOutRequests />} />

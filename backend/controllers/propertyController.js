@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const fs = require("fs");
 const path = require("path");
 const User = require("../models/User");
 const Property = require("../models/Property");
@@ -351,6 +352,7 @@ const signUp = async (req, res) => {
         role: user.role,
         countryCode: user.countryCode,
         phone: user.phone,
+        profilePictureUrl: user.profilePictureUrl || "",
       },
     });
   } catch (err) {
@@ -410,7 +412,14 @@ const signIn = async (req, res) => {
     res.status(StatusCodes.OK).json({
       message: "Login successful.",
       token,
-      user: { _id: user._id, name: user.name, email: user.email, role: user.role, phone: user.phone },
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        profilePictureUrl: user.profilePictureUrl || "",
+      },
     });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -495,6 +504,35 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const uploadProfilePicture = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Please upload an image file." });
+    }
+
+    const relativePath = `/uploads/profile/${path.basename(req.file.filename)}`;
+    const absoluteUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.userId,
+      { profilePictureUrl: absoluteUrl },
+      { new: true }
+    ).select("-password");
+
+    if (!user) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "User not found." });
+    }
+
+    return res.status(StatusCodes.OK).json({
+      message: "Profile picture uploaded successfully.",
+      profilePictureUrl: user.profilePictureUrl,
+      user,
+    });
+  } catch (err) {
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 // ─────────────────────────────────────────────
 //  OWNER – PROPERTY MANAGEMENT
 // ─────────────────────────────────────────────
@@ -575,6 +613,66 @@ const updateProperty = async (req, res) => {
   }
 };
 
+const uploadPropertyPhotos = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "At least one photo is required." });
+    }
+
+    const property = await Property.findOne({ _id: req.params.id, owner: req.user.userId, isActive: true });
+    if (!property) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
+    }
+
+    const uploadedPaths = req.files.map((file) => `/uploads/properties/${path.basename(file.filename)}`);
+    property.photoUrls = [...(property.photoUrls || []), ...uploadedPaths];
+    await property.save();
+
+    return res.status(StatusCodes.OK).json({
+      message: "Property photos uploaded.",
+      photoUrls: property.photoUrls,
+      property,
+    });
+  } catch (err) {
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const removePropertyPhoto = async (req, res) => {
+  try {
+    const { photoUrl } = req.body;
+    if (!photoUrl) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "photoUrl is required." });
+    }
+
+    const property = await Property.findOne({ _id: req.params.id, owner: req.user.userId, isActive: true });
+    if (!property) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
+    }
+
+    const exists = (property.photoUrls || []).includes(photoUrl);
+    if (!exists) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Photo not found on this property." });
+    }
+
+    property.photoUrls = (property.photoUrls || []).filter((url) => url !== photoUrl);
+    await property.save();
+
+    if (photoUrl.startsWith("/uploads/")) {
+      const absolutePath = path.join(__dirname, "..", photoUrl);
+      fs.unlink(absolutePath, () => {});
+    }
+
+    return res.status(StatusCodes.OK).json({
+      message: "Property photo removed.",
+      photoUrls: property.photoUrls,
+      property,
+    });
+  } catch (err) {
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 const deleteProperty = async (req, res) => {
   try {
     const property = await Property.findOneAndUpdate(
@@ -651,7 +749,13 @@ const assignTenant = async (req, res) => {
 
 const getOwnerLeases = async (req, res) => {
   try {
-    const leases = await Lease.find({ owner: req.user.userId, isActive: true })
+    const { includeInactive } = req.query;
+    const filter = { owner: req.user.userId };
+    if (includeInactive !== "true") {
+      filter.isActive = true;
+    }
+
+    const leases = await Lease.find(filter)
       .populate("property", "propertyType address status")
       .populate("tenant", "name email phone")
       .sort({ createdAt: -1 });
@@ -2506,6 +2610,412 @@ const exportOwnerAnalyticsCsv = async (req, res) => {
   }
 };
 
+const generateFeaturesDocument = async (req, res) => {
+  try {
+    const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
+    const filename = `portal-features-${Date.now()}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
+    doc.on("error", (err) => {
+      console.error("PDF generation error:", err);
+      if (!res.headersSent) {
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: "PDF generation failed" });
+      }
+    });
+
+    res.on("error", (err) => {
+      console.error("Response error:", err);
+      doc.end();
+    });
+
+    doc.pipe(res);
+
+    const pageBottom = 742;
+    const leftMargin = 50;
+    const contentWidth = 495;
+    let activeSectionColor = "#1e40af";
+
+    const ensurePageSpace = (requiredHeight = 80) => {
+      if (doc.y + requiredHeight > pageBottom) {
+        doc.addPage();
+      }
+    };
+
+    const drawSectionHeader = (title, color, subtitle) => {
+      ensurePageSpace(80);
+      activeSectionColor = color;
+      doc.fontSize(20).font("Helvetica-Bold").fillColor(color).text(title);
+      doc.moveDown(0.15);
+      if (subtitle) {
+        doc.fontSize(9.5).font("Helvetica").fillColor("#4b5563").text(subtitle, { width: 500 });
+        doc.moveDown(0.15);
+      }
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).lineWidth(1).stroke(color);
+      doc.moveDown(0.55);
+    };
+
+    const getFeatureHeight = (title, description, points) => {
+      const innerWidth = contentWidth - 24;
+      const bulletWidth = contentWidth - 36;
+
+      doc.font("Helvetica-Bold").fontSize(11);
+      const titleHeight = doc.heightOfString(title, { width: innerWidth });
+
+      doc.font("Helvetica").fontSize(9.5);
+      const descriptionHeight = doc.heightOfString(description, { width: innerWidth });
+
+      doc.font("Helvetica-Bold").fontSize(9);
+      const highlightsLabelHeight = doc.heightOfString("Highlights", { width: innerWidth });
+
+      doc.font("Helvetica").fontSize(9);
+      const bulletsHeight = points.reduce((sum, point) => {
+        return sum + doc.heightOfString(`* ${point}`, { width: bulletWidth });
+      }, 0);
+
+      return 10 + titleHeight + 4 + descriptionHeight + 6 + highlightsLabelHeight + 3 + bulletsHeight + 10;
+    };
+
+    const drawFeature = (title, description, points) => {
+      const cardHeight = getFeatureHeight(title, description, points);
+      ensurePageSpace(cardHeight + 8);
+
+      const cardTop = doc.y;
+      const cardLeft = leftMargin;
+
+      doc.roundedRect(cardLeft, cardTop, contentWidth, cardHeight, 6).fillAndStroke("#f8fafc", "#e2e8f0");
+
+      const textX = cardLeft + 12;
+      const innerWidth = contentWidth - 24;
+      const bulletWidth = contentWidth - 36;
+      let y = cardTop + 10;
+
+      doc.fontSize(11).font("Helvetica-Bold").fillColor(activeSectionColor);
+      doc.text(title, textX, y, { width: innerWidth });
+      y = doc.y + 4;
+
+      doc.fontSize(9.5).font("Helvetica").fillColor("#334155");
+      doc.text(description, textX, y, { width: innerWidth });
+      y = doc.y + 6;
+
+      doc.fontSize(9).font("Helvetica-Bold").fillColor("#475569");
+      doc.text("Highlights", textX, y, { width: innerWidth });
+      y = doc.y + 3;
+
+      doc.fontSize(9).font("Helvetica").fillColor("#475569");
+      points.forEach((point) => {
+        doc.text(`* ${point}`, textX + 6, y, { width: bulletWidth });
+        y = doc.y;
+      });
+
+      doc.y = cardTop + cardHeight + 8;
+    };
+
+    // ============ TITLE PAGE ============
+    doc.fontSize(40).font("Helvetica-Bold").fillColor("#1e40af").text("Property Management Portal", { align: "center" });
+    doc.moveDown(0.3);
+    doc.fontSize(14).font("Helvetica").fillColor("#64748b").text("Complete Feature Overview", { align: "center" });
+
+    doc.moveDown(1.6);
+    doc.fontSize(10.5).font("Helvetica").fillColor("#111827").text(
+      "This document summarizes core capabilities for Owners, Tenants, and end users on the platform.",
+      { align: "center", width: 420 }
+    );
+
+    doc.moveDown(1.4);
+    const summaryPoints = [
+      "* Owner operations in one place: property, rent, lease, and maintenance workflows",
+      "* Tenant self-service journey: inquiry to rent payment, documents, and requests",
+      "* Better communication and transparency through notifications, receipts, and tracking",
+      "* Reporting and export options for quick business visibility",
+    ];
+    doc.fontSize(9.5).font("Helvetica");
+    const summaryTextHeight = summaryPoints.reduce((sum, line) => sum + doc.heightOfString(line, { width: 430 }), 0);
+    const summaryBoxHeight = 28 + summaryTextHeight;
+    const summaryTop = doc.y;
+    doc.roundedRect(70, summaryTop, 455, summaryBoxHeight, 8).fillAndStroke("#eff6ff", "#bfdbfe");
+    doc.fontSize(10).font("Helvetica-Bold").fillColor("#1d4ed8").text("What This Portal Provides", 84, summaryTop + 12);
+    doc.y = summaryTop + 28;
+    doc.fontSize(9.5).font("Helvetica").fillColor("#1e3a8a");
+    summaryPoints.forEach((line) => {
+      doc.text(line, { indent: 20, width: 430 });
+    });
+
+    doc.addPage();
+    
+    // ============ OWNER FEATURES ============
+    drawSectionHeader(
+      "FEATURES FOR PROPERTY OWNERS",
+      "#1e40af",
+      "End-to-end tools to manage units, tenants, payments, and portfolio performance."
+    );
+    
+    const ownerFeatures = [
+      {
+        title: "Property Management",
+        description: "Add, manage, and monitor multiple properties with ease. Upload property details, set vacancy status, and maintain all information in one place.",
+        points: ["Add and edit multiple properties", "Set property status (Occupied/Vacant)", "Upload property images and documents", "Track property performance metrics"]
+      },
+      {
+        title: "Client Acquisition & Lead Management",
+        description: "Identify high-intent tenant inquiries and convert them into leases. Track lead funnel metrics and monitor conversion momentum.",
+        points: ["View all property inquiries", "Categorize leads by status", "Track conversion metrics and momentum", "Quick action buttons for follow-up", "High-intent lead cards for priority handling"]
+      },
+      {
+        title: "Tenant & Lease Management",
+        description: "Assign tenants to properties and manage lease agreements efficiently.",
+        points: ["Search and assign tenants to properties", "Create and renew lease agreements", "Track lease start and end dates", "Terminate leases with documentation", "Monitor tenant status and history"]
+      },
+      {
+        title: "Rent Collection & Payment Tracking",
+        description: "Generate rent records, track payments, and manage payment methods securely.",
+        points: ["Generate monthly rent records", "Mark payments as received", "Set payment instructions (Bank/UPI/QR)", "Track pending and overdue payments", "View payment history analytics"]
+      },
+      {
+        title: "Payment Methods Configuration",
+        description: "Configure multiple payment methods to make it easy for tenants to pay rent.",
+        points: ["Add bank account details", "Set UPI ID for direct transfers", "Upload payment QR codes", "Support multiple payment options", "Tenant-friendly payment setup"]
+      },
+      {
+        title: "Maintenance Request Management",
+        description: "Receive, track, and resolve tenant maintenance requests with SLA tracking.",
+        points: ["View all maintenance requests from tenants", "Set urgency levels", "Track SLA due dates", "Add comments and updates", "Update request status"]
+      },
+      {
+        title: "Lease Renewal Management",
+        description: "Manage lease renewals and keep tenants informed about upcoming expiration.",
+        points: ["Create lease renewal requests", "Specify new rent amount and terms", "Track tenant responses", "Cancel renewal if needed", "Automated renewal notifications"]
+      },
+      {
+        title: "Move-Out Request Processing",
+        description: "Process tenant move-out requests with proper documentation and settlement.",
+        points: ["Review move-out requests from tenants", "Specify and track move-out dates", "Approve or reject requests", "Complete move-out with checklists", "Maintain move-out history"]
+      },
+      {
+        title: "Compliance Document Management",
+        description: "Upload, store, and verify important compliance documents.",
+        points: ["Upload compliance documents", "Attach to properties or leases", "Verify document status", "Maintain audit trail", "Secure document storage"]
+      },
+      {
+        title: "Analytics & Reporting",
+        description: "Gain insights into portfolio performance with detailed analytics.",
+        points: ["View dashboard with key metrics", "Access occupancy rate analytics", "Monitor rent collection status", "Track monthly revenue trends", "Export analytics as CSV"]
+      },
+      {
+        title: "Owner Dashboard",
+        description: "Centralized command center with real-time insights and quick actions.",
+        points: ["Client Acquisition Sprint section", "High-Intent Leads overview", "Key performance metrics", "Quick action buttons", "Recent inquiries summary"]
+      },
+      {
+        title: "Vacancy Management",
+        description: "Track and promote vacant properties to attract tenants.",
+        points: ["View all vacant properties", "Update vacancy status", "Promote listings", "Track vacancy duration", "Get tenant inquiries"]
+      }
+    ];
+
+    ownerFeatures.forEach((feature) => {
+      drawFeature(feature.title, feature.description, feature.points);
+    });
+
+    // ============ PAGE BREAK ============
+    doc.addPage();
+    
+    // ============ TENANT FEATURES ============
+    drawSectionHeader(
+      "FEATURES FOR TENANTS",
+      "#7c3aed",
+      "A smooth tenant experience for discovery, rent, support, and compliance tasks."
+    );
+    
+    const tenantFeatures = [
+      {
+        title: "Property Discovery & Browsing",
+        description: "Browse available properties and submit inquiries directly to property owners.",
+        points: ["View all available properties", "Filter by location, rent, and property type", "Submit inquiries to property owners", "Track inquiry status", "Receive property updates"]
+      },
+      {
+        title: "Lease Management",
+        description: "View and manage your active lease agreements easily.",
+        points: ["View active lease details", "Monitor lease start and end dates", "Track lease terms and conditions", "Download lease documents", "Plan for lease renewal"]
+      },
+      {
+        title: "Rent Payment Processing",
+        description: "Pay rent conveniently through multiple payment methods.",
+        points: ["View pending rent amounts", "Pay via Bank Transfer, UPI, or QR Code", "Access structured account details", "View payment history", "Download rent receipts"]
+      },
+      {
+        title: "Rent Receipt Generation",
+        description: "Receive and download professional rent receipts for your records.",
+        points: ["Auto-generated receipts on payment", "Premium receipt format with all details", "Property and lease information", "Payment method tracking", "Transaction ID and date logging"]
+      },
+      {
+        title: "Maintenance Request Submission",
+        description: "Report maintenance issues and track their resolution status.",
+        points: ["Submit maintenance requests easily", "Upload photos of issues", "Set urgency level", "Track request status", "Receive status updates"]
+      },
+      {
+        title: "Compliance Document Upload",
+        description: "Upload and manage required compliance documents.",
+        points: ["Upload government IDs", "Submit proof of identity", "Submit address verification", "Track document verification status", "Maintain document audit trail"]
+      },
+      {
+        title: "Direct Tenant Inquiries",
+        description: "Communicate with property owners about properties and leases.",
+        points: ["Send inquiries to owners", "Track inquiry responses", "View owner messages", "Share additional information", "Reference inquiry history"]
+      },
+      {
+        title: "Lease Renewal Decisions",
+        description: "Accept or reject lease renewal proposals from property owners.",
+        points: ["Receive renewal notifications", "View new rental terms", "Review lease changes", "Accept renewal with confirmation", "Provide counter-offers"]
+      },
+      {
+        title: "Move-Out Request Submission",
+        description: "Submit formal move-out requests with proper notice.",
+        points: ["Request move-out", "Specify intended move-out date", "Provide move-out reason", "Track approval status", "Complete exit checklist"]
+      },
+      {
+        title: "Tenant Dashboard",
+        description: "Personalized dashboard with success accelerator and conversion actions.",
+        points: ["View Success Accelerator section", "Monitor readiness score", "Clear pending dues", "Upload missing documents", "Engage with owners"]
+      },
+      {
+        title: "Real-Time Notifications",
+        description: "Stay updated with instant notifications on all activities.",
+        points: ["Rent due notifications", "Maintenance status updates", "Lease renewal reminders", "Message notifications", "Owner responses"]
+      },
+      {
+        title: "Payment History & Records",
+        description: "View complete payment history with detailed records.",
+        points: ["Track all rent payments", "View payment dates and amounts", "Download payment receipts", "Export payment history", "Reference payment records"]
+      }
+    ];
+
+    tenantFeatures.forEach((feature) => {
+      drawFeature(feature.title, feature.description, feature.points);
+    });
+
+    // ============ PAGE BREAK ============
+    doc.addPage();
+    
+    // ============ PLATFORM FEATURES ============
+    drawSectionHeader(
+      "PLATFORM-WIDE FEATURES",
+      "#059669",
+      "Common services that improve trust, security, speed, and operational visibility."
+    );
+
+    const platformFeatures = [
+      {
+        title: "Role-Based Access Control",
+        description: "Secure role-based access ensuring data isolation between owners and tenants.",
+        points: ["Owner-only sections", "Tenant-only sections", "Public discovery sections", "Secure authentication", "Session management"]
+      },
+      {
+        title: "User Authentication & Security",
+        description: "Enterprise-grade security for user accounts and data protection.",
+        points: ["Secure sign-up and login", "Email verification", "Password recovery", "Secure session tokens", "Data encryption"]
+      },
+      {
+        title: "Real-Time Notifications System",
+        description: "Instant notifications for all platform activities.",
+        points: ["Email notifications", "System notifications", "Activity tracking", "Notification history", "Read/unread status"]
+      },
+      {
+        title: "Document Management System",
+        description: "Secure upload and storage of all documents.",
+        points: ["Compliance documents", "Lease agreements", "Rent receipts", "Payment proofs", "Secure file storage"]
+      },
+      {
+        title: "Email Communication",
+        description: "Automated email notifications for all important events.",
+        points: ["Account creation confirmations", "Payment confirmations", "Maintenance updates", "Lease notifications", "Inquiry responses"]
+      },
+      {
+        title: "Data Export & Reporting",
+        description: "Export data for external analysis and record-keeping.",
+        points: ["CSV exports for analytics", "Rent data exports", "Property reports", "Date range filtering", "Custom report generation"]
+      },
+      {
+        title: "Mobile Responsive Design",
+        description: "Fully responsive interface for mobile, tablet, and desktop.",
+        points: ["Mobile app-like experience", "Touch-friendly interface", "Responsive layouts", "Fast loading times", "Cross-device sync"]
+      },
+      {
+        title: "Modern User Interface",
+        description: "Intuitive and attractive user interface for better engagement.",
+        points: ["Clean dashboard design", "Animated carousels", "Smooth transitions", "Contextual modals", "Progress indicators"]
+      },
+      {
+        title: "Search & Filtering Features",
+        description: "Powerful search and filtering capabilities across the platform.",
+        points: ["Property search", "Tenant search", "Inquiry filtering", "Date range filtering", "Status-based filtering"]
+      },
+      {
+        title: "Analytics & Insights",
+        description: "Data-driven insights for better decision making.",
+        points: ["Portfolio analytics", "Revenue tracking", "Occupancy metrics", "Payment history", "Performance trends"]
+      }
+    ];
+
+    platformFeatures.forEach((feature) => {
+      drawFeature(feature.title, feature.description, feature.points);
+    });
+
+    // ============ FINAL PAGE - GETTING STARTED ============
+    doc.addPage();
+    drawSectionHeader("GETTING STARTED", "#0369a1", "Follow these steps to go live quickly for both user roles.");
+    
+    doc.moveDown(0.5);
+    doc.fontSize(12).font("Helvetica-Bold").fillColor("#1e40af").text("For Property Owners:");
+    doc.moveDown(0.4);
+    doc.fontSize(9.5).font("Helvetica").fillColor("#475569");
+    doc.text("* Sign up with your email and create your owner account", { indent: 15 });
+    doc.text("* Add your properties with details, photos, and rental expectations", { indent: 15 });
+    doc.text("* Set up payment methods (Bank/UPI/QR Code) to receive tenant payments", { indent: 15 });
+    doc.text("* Configure payment instructions and wait for tenant assignments", { indent: 15 });
+    doc.text("* Review tenant inquiries and convert them into leases", { indent: 15 });
+    doc.text("* Generate monthly rent records and track collections", { indent: 15 });
+    doc.text("* Manage maintenance requests and lease renewals", { indent: 15 });
+    doc.text("* Monitor analytics and optimize your portfolio", { indent: 15 });
+    
+    doc.moveDown(1.2);
+    doc.fontSize(12).font("Helvetica-Bold").fillColor("#7c3aed").text("For Tenants:");
+    doc.moveDown(0.4);
+    doc.fontSize(9.5).font("Helvetica").fillColor("#475569");
+    doc.text("* Sign up with your email and create your tenant account", { indent: 15 });
+    doc.text("* Browse available properties and submit inquiries", { indent: 15 });
+    doc.text("* Wait for owner response and proceed with lease negotiation", { indent: 15 });
+    doc.text("* Upload required compliance documents", { indent: 15 });
+    doc.text("* Accept lease agreement from property owner", { indent: 15 });
+    doc.text("* Pay rent using convenient payment methods", { indent: 15 });
+    doc.text("* Submit maintenance requests as needed", { indent: 15 });
+    doc.text("* Manage move-out or lease renewal", { indent: 15 });
+
+    doc.moveDown(1.2);
+    doc.fontSize(11).font("Helvetica-Bold").fillColor("#1e40af").text("Need Help?");
+    doc.moveDown(0.3);
+    doc.fontSize(9.5).font("Helvetica").fillColor("#475569");
+    doc.text("* Visit our FAQ section for answers to common questions", { indent: 15 });
+    doc.text("* Contact our support team for additional assistance", { indent: 15 });
+    doc.text("* Review our privacy policy and terms of service", { indent: 15 });
+
+    doc.moveDown(1.5);
+    doc.fontSize(8).fillColor("#94a3b8");
+    const generatedDate = new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
+    doc.text("Generated on " + generatedDate, { align: "center" });
+    doc.text("Property Management Portal. All rights reserved.", { align: "center" });
+
+    doc.end();
+  } catch (err) {
+    console.error("Error generating features document:", err);
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 module.exports = {
   // Auth
   signUp,
@@ -2513,12 +3023,15 @@ module.exports = {
   forgotPassword,
   getProfile,
   updateProfile,
+  uploadProfilePicture,
   // Owner – Property
   addProperty,
   getOwnerProperties,
   getPublicProperties,
   getPropertyById,
   updateProperty,
+  uploadPropertyPhotos,
+  removePropertyPhoto,
   deleteProperty,
   createPropertyInquiry,
   getOwnerInquiries,
@@ -2579,4 +3092,6 @@ module.exports = {
   getTenantComplianceDocuments,
   getNotifications,
   markNotificationRead,
+  // Features Document
+  generateFeaturesDocument,
 };

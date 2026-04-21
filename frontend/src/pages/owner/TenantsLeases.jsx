@@ -52,18 +52,26 @@ const TenantsLeases = () => {
   const [editingLease, setEditingLease] = useState(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [sectionView, setSectionView] = useState("leases");
+  const [leaseStatusFilter, setLeaseStatusFilter] = useState("All");
+  const [leaseTypeFilter, setLeaseTypeFilter] = useState("All");
+  const [leaseCityFilter, setLeaseCityFilter] = useState("All");
+  const [moveOutStatusFilter, setMoveOutStatusFilter] = useState("All");
   const [moveOutRequests, setMoveOutRequests] = useState([]);
   const [decisionModal, setDecisionModal] = useState(false);
   const [activeRequest, setActiveRequest] = useState(null);
   const [completionModal, setCompletionModal] = useState(false);
   const [completionRequest, setCompletionRequest] = useState(null);
-  const [docsModal, setDocsModal] = useState(false);
+  const [uploadDocsModal, setUploadDocsModal] = useState(false);
+  const [viewDocsModal, setViewDocsModal] = useState(false);
   const [selectedLeaseForDocs, setSelectedLeaseForDocs] = useState(null);
   const [complianceDocs, setComplianceDocs] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [renewals, setRenewals] = useState([]);
   const [renewalModal, setRenewalModal] = useState(false);
   const [renewalLease, setRenewalLease] = useState(null);
+  const [terminateModal, setTerminateModal] = useState(false);
+  const [terminateLeaseTarget, setTerminateLeaseTarget] = useState(null);
   const [decisionForm, setDecisionForm] = useState({
     status: "Approved",
     approvedLastStayingDate: "",
@@ -165,11 +173,18 @@ const TenantsLeases = () => {
     }
   };
 
-  const terminateLease = async (id) => {
-    if (!window.confirm("Terminate this lease? Property will be marked as Vacant.")) return;
+  const openTerminateModal = (lease) => {
+    setTerminateLeaseTarget(lease);
+    setTerminateModal(true);
+  };
+
+  const terminateLease = async () => {
+    if (!terminateLeaseTarget?._id) return;
     try {
-      await api.patch(`/owner/leases/${id}/terminate`);
+      await api.patch(`/owner/leases/${terminateLeaseTarget._id}/terminate`);
       toast.success("Lease terminated.");
+      setTerminateModal(false);
+      setTerminateLeaseTarget(null);
       fetchAll();
     } catch {
       toast.error("Failed to terminate lease.");
@@ -189,25 +204,17 @@ const TenantsLeases = () => {
   ).size;
 
   const pendingMoveOutRequests = moveOutRequests.filter((r) => r.status === "Pending").length;
+  const propertyTypeOptions = ["All", ...new Set(leases.map((l) => l.property?.propertyType).filter(Boolean))];
+  const cityOptions = ["All", ...new Set(leases.map((l) => l.property?.address?.city).filter(Boolean))];
+
+  const isExpiringSoonLease = (lease) => {
+    const end = new Date(lease.leaseEndDate).getTime();
+    const now = Date.now();
+    const thirtyDays = 1000 * 60 * 60 * 24 * 30;
+    return end >= now && end <= now + thirtyDays;
+  };
 
   const normalizedSearch = search.trim().toLowerCase();
-  const filteredLeases = leases.filter((l) => {
-    if (!normalizedSearch) return true;
-    const haystack = [
-      l.tenant?.name,
-      l.tenant?.email,
-      l.tenant?.phone,
-      l.property?.propertyType,
-      l.property?.address?.street,
-      l.property?.address?.city,
-      l.property?.address?.state,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(normalizedSearch);
-  });
-
   const latestRenewalByLeaseId = renewals.reduce((acc, renewal) => {
     const leaseId = renewal.lease?._id || renewal.lease;
     if (!leaseId) return acc;
@@ -217,6 +224,47 @@ const TenantsLeases = () => {
     }
     return acc;
   }, {});
+
+  const filteredLeases = leases.filter((l) => {
+    const matchesSearch = (() => {
+      if (!normalizedSearch) return true;
+      const haystack = [
+        l.tenant?.name,
+        l.tenant?.email,
+        l.tenant?.phone,
+        l.property?.propertyType,
+        l.property?.address?.street,
+        l.property?.address?.city,
+        l.property?.address?.state,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    })();
+
+    const matchesType = leaseTypeFilter === "All" || l.property?.propertyType === leaseTypeFilter;
+    const matchesCity = leaseCityFilter === "All" || l.property?.address?.city === leaseCityFilter;
+    const matchesLeaseStatus = (() => {
+      if (leaseStatusFilter === "All") return true;
+      if (leaseStatusFilter === "ExpiringSoon") return isExpiringSoonLease(l);
+      if (leaseStatusFilter === "RenewalPending") return latestRenewalByLeaseId[l._id]?.status === "Pending";
+      return true;
+    })();
+
+    return matchesSearch && matchesType && matchesCity && matchesLeaseStatus;
+  }).sort((a, b) => new Date(a.leaseEndDate) - new Date(b.leaseEndDate));
+
+  const filteredMoveOutRequests = moveOutRequests.filter((request) => {
+    if (moveOutStatusFilter === "All") return true;
+    return request.status === moveOutStatusFilter;
+  });
+
+  const leaseFilterCounts = {
+    all: leases.length,
+    expiringSoon: leases.filter((l) => isExpiringSoonLease(l)).length,
+    renewalPending: leases.filter((l) => latestRenewalByLeaseId[l._id]?.status === "Pending").length,
+  };
 
   const openDecisionModal = (request) => {
     setActiveRequest(request);
@@ -258,15 +306,20 @@ const TenantsLeases = () => {
     }
   };
 
-  const openDocsModal = async (lease) => {
+  const openUploadDocsModal = (lease) => {
     setSelectedLeaseForDocs(lease);
-    setDocsModal(true);
+    setUploadDocsModal(true);
     setDocForm({
       documentType: "Rent Agreement",
       documentNumber: "",
       notes: "",
       document: null,
     });
+  };
+
+  const openViewDocsModal = async (lease) => {
+    setSelectedLeaseForDocs(lease);
+    setViewDocsModal(true);
     await loadComplianceDocs(lease._id);
   };
 
@@ -297,7 +350,7 @@ const TenantsLeases = () => {
         notes: "",
         document: null,
       });
-      await loadComplianceDocs(selectedLeaseForDocs._id);
+      setUploadDocsModal(false);
     } catch (err) {
       toast.error(err.response?.data?.message || "Upload failed.");
     } finally {
@@ -401,7 +454,7 @@ const TenantsLeases = () => {
         verificationStatus,
       });
       toast.success(`Document ${verificationStatus.toLowerCase()}.`);
-      if (selectedLeaseForDocs?._id) {
+      if (selectedLeaseForDocs?._id && viewDocsModal) {
         await loadComplianceDocs(selectedLeaseForDocs._id);
       }
     } catch (err) {
@@ -465,23 +518,60 @@ const TenantsLeases = () => {
         </div>
       </div>
 
+      <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setSectionView("leases")}
+            className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${
+              sectionView === "leases" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Leases ({leases.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSectionView("moveOut")}
+            className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${
+              sectionView === "moveOut" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Move-Out Requests ({moveOutRequests.length})
+          </button>
+        </div>
+      </section>
+
+      {sectionView === "moveOut" ? (
       <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-base font-semibold text-gray-900 inline-flex items-center gap-2">
             <ClipboardCheck size={18} className="text-indigo-600" /> Tenant Move-Out Requests
           </h3>
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-            {moveOutRequests.length} total
-          </span>
+          <div className="flex items-center gap-2">
+            <select
+              value={moveOutStatusFilter}
+              onChange={(e) => setMoveOutStatusFilter(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
+            >
+              <option value="All">All Status</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Completed">Completed</option>
+            </select>
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              {filteredMoveOutRequests.length} shown
+            </span>
+          </div>
         </div>
 
-        {moveOutRequests.length === 0 ? (
+        {filteredMoveOutRequests.length === 0 ? (
           <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-            No move-out requests submitted yet.
+            No move-out requests match this filter.
           </div>
         ) : (
           <div className="space-y-3">
-            {moveOutRequests.slice(0, 6).map((request) => (
+            {filteredMoveOutRequests.slice(0, 8).map((request) => (
               <div key={request._id} className="rounded-xl border border-gray-100 p-4">
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
                   <div className="space-y-2">
@@ -554,19 +644,66 @@ const TenantsLeases = () => {
           </div>
         )}
       </div>
+      ) : null}
 
+      {sectionView === "leases" ? (
+      <>
       {/* Search */}
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
-          <div className="h-full px-3 py-2.5 bg-gray-50 border-r border-gray-200 text-gray-500 flex items-center">
-            <Search size={16} />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="md:col-span-2 flex items-center rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+            <div className="h-full px-3 py-2.5 bg-gray-50 border-r border-gray-200 text-gray-500 flex items-center">
+              <Search size={16} />
+            </div>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by tenant, property, city or phone"
+              className="w-full px-3 py-2.5 text-sm text-gray-700 bg-white outline-none"
+            />
           </div>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by tenant, property, city or phone"
-            className="w-full px-3 py-2.5 text-sm text-gray-700 bg-white outline-none"
-          />
+          <select
+            value={leaseTypeFilter}
+            onChange={(e) => setLeaseTypeFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700"
+          >
+            {propertyTypeOptions.map((type) => (
+              <option key={type} value={type}>{type === "All" ? "All Types" : type}</option>
+            ))}
+          </select>
+          <select
+            value={leaseCityFilter}
+            onChange={(e) => setLeaseCityFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700"
+          >
+            {cityOptions.map((city) => (
+              <option key={city} value={city}>{city === "All" ? "All Cities" : city}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setLeaseStatusFilter("All")}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${leaseStatusFilter === "All" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600"}`}
+          >
+            All ({leaseFilterCounts.all})
+          </button>
+          <button
+            type="button"
+            onClick={() => setLeaseStatusFilter("ExpiringSoon")}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${leaseStatusFilter === "ExpiringSoon" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-gray-200 text-gray-600"}`}
+          >
+            Expiring Soon ({leaseFilterCounts.expiringSoon})
+          </button>
+          <button
+            type="button"
+            onClick={() => setLeaseStatusFilter("RenewalPending")}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${leaseStatusFilter === "RenewalPending" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600"}`}
+          >
+            Renewal Pending ({leaseFilterCounts.renewalPending})
+          </button>
         </div>
       </div>
 
@@ -642,13 +779,16 @@ const TenantsLeases = () => {
                   <button onClick={() => openRenewalModal(l)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
                     <RefreshCcw size={14} /> Renewal
                   </button>
-                  <button onClick={() => openDocsModal(l)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
-                    <FileText size={14} /> Docs
+                  <button onClick={() => openUploadDocsModal(l)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
+                    <Upload size={14} /> Upload Docs
+                  </button>
+                  <button onClick={() => openViewDocsModal(l)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
+                    <FileText size={14} /> View Docs
                   </button>
                   <button onClick={() => openEditLease(l)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
                     <Pencil size={14} /> Edit
                   </button>
-                  <button onClick={() => terminateLease(l._id)} className="btn-danger flex items-center gap-1.5 text-sm py-1.5 px-3">
+                  <button onClick={() => openTerminateModal(l)} className="btn-danger flex items-center gap-1.5 text-sm py-1.5 px-3">
                     <UserX size={14} /> Terminate
                   </button>
                 </div>
@@ -657,6 +797,8 @@ const TenantsLeases = () => {
           ))}
         </div>
       )}
+      </>
+      ) : null}
 
       {/* Assign Tenant Modal */}
       
@@ -720,6 +862,37 @@ const TenantsLeases = () => {
             <button type="submit" disabled={saving} className="btn-primary">{saving ? "Assigning..." : "Assign"}</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal isOpen={terminateModal} onClose={() => setTerminateModal(false)} title="Terminate Lease">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
+            <p className="text-sm font-semibold text-rose-800">This action will end the active lease and mark the property as Vacant.</p>
+            {terminateLeaseTarget ? (
+              <div className="mt-2 text-xs text-rose-700 space-y-1">
+                <p>Tenant: {terminateLeaseTarget.tenant?.name || "N/A"}</p>
+                <p>Property: {terminateLeaseTarget.property?.propertyType || "Property"} - {terminateLeaseTarget.property?.address?.city || "N/A"}</p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setTerminateModal(false)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={terminateLease}
+              className="btn-danger inline-flex items-center gap-1.5"
+            >
+              <UserX size={14} /> Confirm Terminate
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Edit Lease Modal */}
@@ -884,7 +1057,7 @@ const TenantsLeases = () => {
         </form>
       </Modal>
 
-      <Modal isOpen={docsModal} onClose={() => setDocsModal(false)} title="Compliance Documents">
+      <Modal isOpen={uploadDocsModal} onClose={() => setUploadDocsModal(false)} title="Upload Compliance Documents">
         <div className="space-y-4">
           {selectedLeaseForDocs ? (
             <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-800">
@@ -947,6 +1120,23 @@ const TenantsLeases = () => {
             </div>
           </form>
 
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            Uploaded files can be reviewed and verified from the separate "View Docs" popup.
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={viewDocsModal} onClose={() => setViewDocsModal(false)} title="Uploaded & Verified Documents">
+        <div className="space-y-4">
+          {selectedLeaseForDocs ? (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-800">
+              <p className="font-semibold">{selectedLeaseForDocs.tenant?.name}</p>
+              <p className="text-xs mt-1">
+                {selectedLeaseForDocs.property?.propertyType} - {selectedLeaseForDocs.property?.address?.street}, {selectedLeaseForDocs.property?.address?.city}
+              </p>
+            </div>
+          ) : null}
+
           <div className="border-t border-gray-100 pt-3 space-y-2">
             <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1.5">
               <ShieldCheck size={14} className="text-emerald-600" /> Uploaded Documents
@@ -974,10 +1164,12 @@ const TenantsLeases = () => {
                     </a>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="text-[11px] font-semibold text-gray-600">Status: {doc.verificationStatus || "Pending"}</span>
-                      <div className="flex gap-1">
-                        <button type="button" onClick={() => verifyDocument(doc._id, "Verified")} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Verify</button>
-                        <button type="button" onClick={() => verifyDocument(doc._id, "Rejected")} className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700">Reject</button>
-                      </div>
+                      {doc.verificationStatus !== "Verified" ? (
+                        <div className="flex gap-1">
+                          <button type="button" onClick={() => verifyDocument(doc._id, "Verified")} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Verify</button>
+                          <button type="button" onClick={() => verifyDocument(doc._id, "Rejected")} className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700">Reject</button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}

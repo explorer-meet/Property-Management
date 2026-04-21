@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Plus,
   Pencil,
@@ -15,10 +16,12 @@ import {
   FileText,
   Hash,
   Navigation,
+  LayoutDashboard,
 } from "lucide-react";
 import { PageHeader, Modal, StatusBadge, EmptyState } from "../../components/UI";
 import api from "../../utils/api";
 import toast from "react-hot-toast";
+import { resolvePropertyCoverImage } from "../../utils/propertyImages";
 
 const PROPERTY_TYPES = [
   { label: "Home",   icon: Home,      color: "blue",   grad: "from-blue-500 to-indigo-600"   },
@@ -42,6 +45,7 @@ const emptyForm = {
 };
 
 const Properties = () => {
+  const navigate = useNavigate();
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -50,6 +54,10 @@ const Properties = () => {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [photoFiles, setPhotoFiles] = useState([]);
+
+  const apiOrigin = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
 
   const fetchProperties = async () => {
     try {
@@ -64,7 +72,7 @@ const Properties = () => {
 
   useEffect(() => { fetchProperties(); }, []);
 
-  const openAdd = () => { setForm(emptyForm); setEditingId(null); setModalOpen(true); };
+  const openAdd = () => { setForm(emptyForm); setPhotoFiles([]); setEditingId(null); setModalOpen(true); };
 
   const openEdit = (p) => {
     setForm({
@@ -74,6 +82,7 @@ const Properties = () => {
       numberOfRooms: p.numberOfRooms,
     });
     setEditingId(p._id);
+    setPhotoFiles([]);
     setModalOpen(true);
   };
 
@@ -92,12 +101,28 @@ const Properties = () => {
     try {
       if (editingId) {
         await api.put(`/owner/properties/${editingId}`, form);
+        if (photoFiles.length > 0) {
+          const photoData = new FormData();
+          photoFiles.forEach((file) => photoData.append("photos", file));
+          await api.post(`/owner/properties/${editingId}/photos`, photoData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        }
         toast.success("Property updated.");
       } else {
-        await api.post("/owner/properties", form);
+        const { data } = await api.post("/owner/properties", form);
+        const createdPropertyId = data?.property?._id;
+        if (createdPropertyId && photoFiles.length > 0) {
+          const photoData = new FormData();
+          photoFiles.forEach((file) => photoData.append("photos", file));
+          await api.post(`/owner/properties/${createdPropertyId}/photos`, photoData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        }
         toast.success("Property added.");
       }
       setModalOpen(false);
+      setPhotoFiles([]);
       fetchProperties();
     } catch (err) {
       toast.error(err.response?.data?.message || "Save failed.");
@@ -122,13 +147,13 @@ const Properties = () => {
     const addressText = `${p.address?.street || ""} ${p.address?.city || ""} ${p.address?.state || ""} ${p.address?.pincode || ""}`.toLowerCase();
     const matchesSearch = !normalizedSearch || p.propertyType.toLowerCase().includes(normalizedSearch) || addressText.includes(normalizedSearch);
     const matchesType = typeFilter === "All" || p.propertyType === typeFilter;
-    return matchesSearch && matchesType;
+    const matchesStatus = statusFilter === "All" || p.status === statusFilter;
+    return matchesSearch && matchesType && matchesStatus;
   });
 
   const total = properties.length;
   const occupied = properties.filter((p) => p.status === "Occupied").length;
   const vacant = properties.filter((p) => p.status === "Vacant").length;
-  const totalRooms = properties.reduce((sum, p) => sum + Number(p.numberOfRooms || 0), 0);
   const occupancyRate = total > 0 ? Math.round((occupied / total) * 100) : 0;
 
   // Selected type meta for modal header
@@ -170,19 +195,28 @@ const Properties = () => {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {[
-          { label: "Total Properties", value: total,      sub: "Across all types",    color: "text-gray-900" },
-          { label: "Occupied",         value: occupied,   sub: "Currently active",    color: "text-blue-700" },
-          { label: "Vacant",           value: vacant,     sub: "Ready to lease",      color: "text-gray-800" },
-          { label: "Total Rooms",      value: totalRooms, sub: "Portfolio capacity",  color: "text-emerald-700" },
-        ].map(({ label, value, sub, color }) => (
-          <div key={label} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+          { label: "Total Properties", value: total,    sub: "Across all types", color: "text-gray-900", filter: "All" },
+          { label: "Occupied",         value: occupied, sub: "Currently active", color: "text-blue-700", filter: "Occupied" },
+          { label: "Vacant",           value: vacant,   sub: "Ready to lease",   color: "text-gray-800", filter: "Vacant" },
+        ].map(({ label, value, sub, color, filter }) => {
+          const isActive = statusFilter === filter;
+          return (
+          <button
+            key={label}
+            type="button"
+            onClick={() => setStatusFilter(filter)}
+            className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition-all hover:shadow-md ${
+              isActive ? "border-indigo-300 ring-2 ring-indigo-200" : "border-gray-100"
+            }`}
+          >
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</p>
             <p className={`mt-2 text-3xl font-extrabold ${color}`}>{value}</p>
             <p className="text-xs text-gray-500 mt-1">{sub}</p>
-          </div>
-        ))}
+          </button>
+        );
+        })}
       </div>
 
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -228,6 +262,14 @@ const Properties = () => {
               <div key={p._id} className="group rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
                 {/* Coloured top stripe */}
                 <div className={`h-1.5 w-full bg-gradient-to-r ${meta.grad}`} />
+                <div className="relative h-44 overflow-hidden">
+                  <img
+                    src={resolvePropertyCoverImage(p, apiOrigin)}
+                    alt={p.propertyType}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
+                </div>
                 <div className="p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div className={`inline-flex items-center gap-2 rounded-xl ${tc.bg} ${tc.text} px-3 py-1.5 text-xs font-bold ring-1 ${tc.ring}/40`}>
@@ -251,6 +293,12 @@ const Properties = () => {
                     </span>
                   </div>
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
+                    <button
+                      onClick={() => navigate(`/owner/properties/${p._id}/manage`)}
+                      className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3 flex-1 justify-center"
+                    >
+                      <LayoutDashboard size={14} /> Manage
+                    </button>
                     <button onClick={() => openEdit(p)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3 flex-1 justify-center">
                       <Pencil size={14} /> Edit
                     </button>
@@ -402,6 +450,18 @@ const Properties = () => {
               rows={3} placeholder="Describe the property — amenities, highlights, rules…"
               className="input-field resize-none"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Property Photos (optional)</label>
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={(e) => setPhotoFiles(Array.from(e.target.files || []))}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+            />
+            <p className="mt-1 text-xs text-gray-500">{photoFiles.length} file(s) selected. Images upload when you save property.</p>
           </div>
 
           {/* Actions */}

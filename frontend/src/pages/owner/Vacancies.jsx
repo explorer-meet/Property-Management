@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   MapPin,
   Home,
@@ -9,11 +10,17 @@ import {
 import { PageHeader } from "../../components/UI";
 import api from "../../utils/api";
 import toast from "react-hot-toast";
+import { resolvePropertyCoverImage } from "../../utils/propertyImages";
+
+const CATEGORY_OPTIONS = ["All", "Home", "Flat", "Office", "Shop"];
 
 const Vacancies = () => {
+  const navigate = useNavigate();
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const apiOrigin = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
 
   const fetchVacancies = async () => {
     try {
@@ -32,8 +39,8 @@ const Vacancies = () => {
     setUpdating(id);
     try {
       await api.patch(`/owner/properties/${id}/status`, { status: "Occupied" });
-      toast.success("Property marked as Occupied.");
-      fetchVacancies();
+      toast.success("Property marked as Occupied. Add tenant details now.");
+      navigate(`/owner/properties/${id}/manage?tab=tenants&openAssign=1`);
     } catch {
       toast.error("Update failed.");
     } finally {
@@ -42,8 +49,9 @@ const Vacancies = () => {
   };
 
   const totalVacancies = properties.length;
-  const totalUnits = properties.reduce((sum, p) => sum + Number(p.numberOfRooms || 0), 0);
   const uniqueCities = new Set(properties.map((p) => p.address?.city).filter(Boolean)).size;
+  const filteredProperties = properties.filter((p) => categoryFilter === "All" || p.propertyType === categoryFilter);
+  const filteredCount = filteredProperties.length;
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Loading...</div>;
 
@@ -80,9 +88,9 @@ const Vacancies = () => {
           <p className="text-xs text-gray-500 mt-1">Ready to lease</p>
         </div>
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total Vacant Units</p>
-          <p className="mt-2 text-3xl font-extrabold text-amber-700">{totalUnits}</p>
-          <p className="text-xs text-gray-500 mt-1">Capacity in vacant stock</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Active Category</p>
+          <p className="mt-2 text-3xl font-extrabold text-amber-700">{categoryFilter}</p>
+          <p className="text-xs text-gray-500 mt-1">{filteredCount} matching vacancies</p>
         </div>
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">City Coverage</p>
@@ -91,16 +99,46 @@ const Vacancies = () => {
         </div>
       </div>
 
-      {properties.length === 0 ? (
+      <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="mr-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Filter by Category</p>
+          {CATEGORY_OPTIONS.map((category) => {
+            const active = categoryFilter === category;
+            return (
+              <button
+                key={category}
+                type="button"
+                onClick={() => setCategoryFilter(category)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                  active
+                    ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-100"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {category}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {filteredProperties.length === 0 ? (
         <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 text-center py-16 px-4">
           <BadgeCheck size={48} className="mx-auto text-emerald-500 mb-4" />
-          <p className="text-emerald-900 text-lg font-semibold">No Vacant Properties</p>
-          <p className="text-emerald-700 text-sm mt-1">Great news, all your properties are occupied.</p>
+          <p className="text-emerald-900 text-lg font-semibold">No Vacancies In This Category</p>
+          <p className="text-emerald-700 text-sm mt-1">Try another category to view available properties.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {properties.map((p) => (
+          {filteredProperties.map((p) => (
             <div key={p._id} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+              <div className="mb-3 overflow-hidden rounded-xl border border-gray-100">
+                <img
+                  src={resolvePropertyCoverImage(p, apiOrigin)}
+                  alt={p.propertyType}
+                  className="h-40 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              </div>
               <div className="mb-3">
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full">
                   <DoorOpen size={12} /> Vacant
