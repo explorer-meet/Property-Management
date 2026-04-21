@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import {
   Building2,
   Wrench,
@@ -20,12 +21,11 @@ import {
   Upload,
   ShieldCheck,
   MessageCircle,
-  Home,
   Rocket,
   ArrowRight,
   Sparkles,
 } from "lucide-react";
-import { Modal, PageHeader, StatusBadge } from "../../components/UI";
+import { Modal, StatusBadge } from "../../components/UI";
 import api from "../../utils/api";
 import { formatCurrency } from "../../utils/currency";
 import toast from "react-hot-toast";
@@ -42,6 +42,7 @@ const TenantDashboard = () => {
   const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
 
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
   const [data, setData] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [moveOutRequests, setMoveOutRequests] = useState([]);
@@ -240,6 +241,7 @@ const TenantDashboard = () => {
     ((lease ? 1 : 0) + (complianceDocs.length > 0 ? 1 : 0) + (inquiries.length > 0 ? 1 : 0) + (payableRent === 0 ? 1 : 0)) / 4 * 100
   );
   const openInquiryCount = inquiries.filter((inq) => ["New", "In Progress"].includes(inq.status || "New")).length;
+  const tenantDisplayName = user?.firstName || user?.name?.split(" ")?.[0] || "there";
   const conversionSteps = [
     {
       id: "rent",
@@ -337,30 +339,16 @@ const TenantDashboard = () => {
       <div className="absolute top-0 right-0 w-96 h-96 bg-green-400/20 rounded-full blur-3xl animate-blob" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-400/20 rounded-full blur-3xl animate-blob-delay" />
       <div className="relative z-10 space-y-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-      <PageHeader
-        title="My Dashboard"
-        subtitle="Your complete tenancy command center with rent, requests, lease timeline and documents"
-        action={
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
-          >
-            <Home size={14} /> Back to Home
-          </button>
-        }
-      />
-
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 px-6 py-7 sm:px-8 shadow-2xl animate-fade-up">
         <div className="absolute -top-10 -right-8 h-28 w-28 rounded-full bg-blue-400/20 blur-2xl animate-blob" />
         <div className="absolute -bottom-10 -left-8 h-32 w-32 rounded-full bg-indigo-400/20 blur-2xl animate-blob-delay" />
         <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:24px_24px]" />
         <div className="relative grid grid-cols-1 md:grid-cols-3 gap-4 text-white">
           <div className="md:col-span-2">
-            <p className="text-xs uppercase tracking-[0.16em] text-blue-200 font-semibold">Tenant Hub</p>
-            <h2 className="mt-2 text-2xl sm:text-3xl font-extrabold">Everything about your tenancy in one place</h2>
+            <p className="text-xs uppercase tracking-[0.16em] text-blue-200 font-semibold">Welcome Back</p>
+            <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold">Hi {tenantDisplayName}, manage your tenancy with clarity</h1>
             <p className="mt-2 text-sm text-blue-100 max-w-xl">
-              Track rent dues, maintenance requests, lease timeline and property details without confusion.
+              Track rent dues, maintenance requests, lease timeline, and property details from one clean dashboard without duplicate navigation.
             </p>
           </div>
           <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">

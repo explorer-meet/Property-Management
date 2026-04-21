@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
@@ -6,12 +6,14 @@ import {
   Wrench, Menu, X, MapPin, ChevronRight, UserCircle2, Bell, RefreshCcw, DoorOpen, MessageCircle, ChevronDown, Landmark,
 } from "lucide-react";
 
+import api from "../utils/api";
+
 const ownerLinks = [
   {
     section: "Dashboard & Overview",
-    items: [
-      { to: "/owner/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    ]
+    to: "/owner/dashboard",
+    icon: LayoutDashboard,
+    items: []
   },
   {
     section: "Property Management",
@@ -49,9 +51,9 @@ const ownerLinks = [
 const tenantLinks = [
   {
     section: "Dashboard",
-    items: [
-      { to: "/tenant/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    ]
+    to: "/tenant/dashboard",
+    icon: LayoutDashboard,
+    items: []
   },
   {
     section: "My Tenancy",
@@ -76,6 +78,15 @@ const Sidebar = () => {
   const isOwner = user?.role === "owner";
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState({});
+  const [activeInquiryCount, setActiveInquiryCount] = useState(0);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    api.get("/owner/inquiries").then(({ data }) => {
+      const count = (data?.inquiries || []).filter((i) => i.status !== "Closed").length;
+      setActiveInquiryCount(count);
+    }).catch(() => {});
+  }, [isOwner]);
 
   const toggleSection = (section) => {
     setExpandedSections((prev) => ({
@@ -175,6 +186,39 @@ const Sidebar = () => {
           };
           
           const colors = getSectionColors(section.section);
+
+          if (section.to) {
+            const SectionIcon = section.icon || LayoutDashboard;
+
+            return (
+              <div key={idx} className={idx > 0 ? "mt-4" : ""}>
+                <NavLink
+                  to={section.to}
+                  onClick={(e) => {
+                    if (location.pathname === section.to) {
+                      e.preventDefault();
+                      return;
+                    }
+                    setMobileOpen(false);
+                  }}
+                  preventScrollReset
+                  className={({ isActive }) =>
+                    `w-full px-3 py-2.5 rounded-lg border transition-all duration-200 flex items-center gap-2.5 group ${
+                      isActive
+                        ? `bg-gradient-to-r ${colors.bg} ${colors.border} shadow-md`
+                        : `bg-white/75 border-white/70 hover:shadow-md hover:scale-105`
+                    }`
+                  }
+                >
+                  <div className={`p-1.5 rounded-md ${colors.icon} flex-shrink-0`}>
+                    <SectionIcon size={16} className="text-white" />
+                  </div>
+                  <span className={`flex-1 text-left text-xs font-bold tracking-wide ${colors.header}`}>{section.section}</span>
+                  <ChevronRight size={14} className="opacity-50 transition-transform duration-200 group-hover:translate-x-0.5" />
+                </NavLink>
+              </div>
+            );
+          }
           
           return (
             <div key={idx} className={idx > 0 ? "mt-4" : ""}>
@@ -221,7 +265,11 @@ const Sidebar = () => {
                     >
                       <Icon size={18} className="transition-transform duration-200 group-hover:scale-110 flex-shrink-0" />
                       <span className="flex-1">{label}</span>
-                      <ChevronRight size={14} className="opacity-40 transition-transform duration-200 group-hover:translate-x-0.5 flex-shrink-0" />
+                      {isOwner && to === "/owner/inquiries" && activeInquiryCount > 0 ? (
+                        <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">{activeInquiryCount}</span>
+                      ) : (
+                        <ChevronRight size={14} className="opacity-40 transition-transform duration-200 group-hover:translate-x-0.5 flex-shrink-0" />
+                      )}
                     </NavLink>
                   ))}
                 </div>

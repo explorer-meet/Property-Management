@@ -52,6 +52,9 @@ const STATUS_MAP = {
   Accepted:      { cls: "badge-green",  dot: "bg-emerald-500" },
   New:           { cls: "badge-purple", dot: "bg-purple-500" },
   Contacted:     { cls: "badge-blue",   dot: "bg-blue-500" },
+  "Visit Planned": { cls: "badge-purple", dot: "bg-violet-500" },
+  Visited:       { cls: "badge-blue",   dot: "bg-cyan-500" },
+  Handled:       { cls: "badge-green",  dot: "bg-emerald-500" },
   Closed:        { cls: "badge-gray",   dot: "bg-gray-400" },
 };
 

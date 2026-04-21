@@ -8,9 +8,14 @@ const propertyInquirySchema = new mongoose.Schema(
     message: { type: String, trim: true, maxlength: 500 },
     status: {
       type: String,
-      enum: ["New", "In Progress", "Contacted", "Closed"],
+      enum: ["New", "In Progress", "Contacted", "Visit Planned", "Visited", "Handled", "Closed"],
       default: "New",
     },
+    visitScheduledAt: { type: Date },
+    visitNote: { type: String, trim: true, maxlength: 500 },
+    visitedAt: { type: Date },
+    ownerFollowUpNote: { type: String, trim: true, maxlength: 500 },
+    revisitRequested: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -31,9 +31,9 @@ const csvEscape = (value) => {
   return `"${String(value).replace(/"/g, '""')}"`;
 };
 
-const createNotification = async ({ recipient, role, title, message, type = "system", actionPath, metadata }) => {
+const createNotification = async ({ recipient, role, title, message, type = "system", actionPath, metadata, senderName }) => {
   try {
-    await Notification.create({ recipient, role, title, message, type, actionPath, metadata });
+    await Notification.create({ recipient, role, title, message, type, actionPath, metadata, senderName });
   } catch (_) {
     // Non-blocking side effect
   }
@@ -956,6 +956,7 @@ const submitTenantRentPayment = async (req, res) => {
       message: `${rentRecord.tenant?.name || "Tenant"} submitted payment reference for ${rentRecord.month} ${rentRecord.year}.`,
       type: "rent",
       actionPath: "/owner/rent",
+      senderName: rentRecord.tenant?.name || "Tenant",
       metadata: { rentId: rentRecord._id, transactionId: rentRecord.paymentSubmission.transactionId },
     });
 
@@ -1313,8 +1314,9 @@ const createPropertyInquiry = async (req, res) => {
       role: "owner",
       title: "New property inquiry",
       message: `${req.user.name || "A user"} is interested in your property in ${property.address?.city || "your listing"}.`,
-      type: "system",
+      type: "inquiry",
       actionPath: "/owner/dashboard",
+      senderName: req.user.name || req.user.email || "Tenant",
       metadata: { inquiryId: inquiry._id, propertyId: property._id },
     });
 
@@ -1355,16 +1357,39 @@ const getOwnerInquiries = async (req, res) => {
 
 const updateOwnerInquiryStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    const allowedStatus = ["New", "In Progress", "Contacted", "Closed"];
+    const { status, visitScheduledAt, visitNote, ownerFollowUpNote } = req.body;
+    const allowedStatus = ["New", "In Progress", "Contacted", "Visit Planned", "Visited", "Handled", "Closed"];
 
     if (!allowedStatus.includes(status)) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid inquiry status." });
     }
 
+    const updatePayload = { status };
+
+    if (status === "Visit Planned") {
+      if (!visitScheduledAt) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Visit date and time are required for planning a visit." });
+      }
+      const parsedVisitDate = new Date(visitScheduledAt);
+      if (Number.isNaN(parsedVisitDate.getTime())) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid visit date and time." });
+      }
+      updatePayload.visitScheduledAt = parsedVisitDate;
+      updatePayload.visitNote = String(visitNote || "").trim();
+      updatePayload.revisitRequested = false;
+    }
+
+    if (status === "Visited") {
+      updatePayload.visitedAt = new Date();
+    }
+
+    if (ownerFollowUpNote !== undefined) {
+      updatePayload.ownerFollowUpNote = String(ownerFollowUpNote || "").trim();
+    }
+
     const inquiry = await PropertyInquiry.findOneAndUpdate(
       { _id: req.params.id, owner: req.user.userId },
-      { status },
+      updatePayload,
       { new: true }
     )
       .populate("property", "propertyType address status numberOfRooms")
@@ -1373,6 +1398,26 @@ const updateOwnerInquiryStatus = async (req, res) => {
     if (!inquiry) {
       return res.status(StatusCodes.NOT_FOUND).json({ message: "Inquiry not found." });
     }
+
+    const propertyLabel = `${inquiry.property?.propertyType || "Property"} in ${inquiry.property?.address?.city || "your selected area"}`;
+    const visitInfo = inquiry.visitScheduledAt
+      ? ` Visit scheduled for ${new Date(inquiry.visitScheduledAt).toLocaleString()}.`
+      : "";
+
+    await createNotification({
+      recipient: inquiry.inquirer?._id,
+      role: "tenant",
+      title: "Inquiry update from owner",
+      message: `Your inquiry for ${propertyLabel} is now marked as ${status}.${status === "Visit Planned" ? visitInfo : ""}`,
+      type: "inquiry",
+      actionPath: "/tenant/inquiries",
+      metadata: {
+        inquiryId: inquiry._id,
+        propertyId: inquiry.property?._id,
+        status,
+        visitScheduledAt: inquiry.visitScheduledAt || null,
+      },
+    });
 
     res.status(StatusCodes.OK).json({ message: "Inquiry status updated.", inquiry });
   } catch (err) {
@@ -1388,6 +1433,34 @@ const getTenantInquiries = async (req, res) => {
       .sort({ createdAt: -1 });
 
     res.status(StatusCodes.OK).json({ inquiries });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const requestTenantRevisit = async (req, res) => {
+  try {
+    const inquiry = await PropertyInquiry.findOne({ _id: req.params.id, inquirer: req.user.userId });
+    if (!inquiry) return res.status(StatusCodes.NOT_FOUND).json({ message: "Inquiry not found." });
+
+    if (inquiry.status !== "Visited") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Revisit can only be requested after a visit is completed." });
+    }
+
+    inquiry.revisitRequested = true;
+    await inquiry.save();
+
+    await createNotification({
+      recipient: inquiry.owner,
+      role: "owner",
+      title: "Tenant Requested Another Visit",
+      message: `A tenant has requested another property visit for your listing.`,
+      type: "inquiry",
+      actionPath: "/owner/inquiries",
+      senderName: req.user.name || "Tenant",
+    });
+
+    res.status(StatusCodes.OK).json({ message: "Revisit request sent to owner." });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -1493,6 +1566,7 @@ const createMaintenanceRequest = async (req, res) => {
       message: `${requestUrgency} priority ${category} issue raised by tenant.`,
       type: "maintenance",
       actionPath: "/owner/maintenance",
+      senderName: lease.tenant?.name || "Tenant",
       metadata: { requestId: request._id },
     });
 
@@ -1600,6 +1674,7 @@ const createMoveOutRequest = async (req, res) => {
       message: `${lease.tenant?.name || "Tenant"} submitted a move-out request for review.`,
       type: "moveout",
       actionPath: "/owner/move-out",
+      senderName: lease.tenant?.name || "Tenant",
       metadata: { requestId: request._id },
     });
 
@@ -1986,6 +2061,7 @@ const uploadTenantComplianceDocument = async (req, res) => {
       message: `Tenant uploaded ${documentType}.`,
       type: "compliance",
       actionPath: "/owner/tenants",
+      senderName: req.user.name || "Tenant",
       metadata: { documentId: doc._id },
     });
 
@@ -2179,6 +2255,7 @@ const decideLeaseRenewal = async (req, res) => {
       message: `Tenant ${status.toLowerCase()} your renewal proposal.`,
       type: "renewal",
       actionPath: "/owner/tenants",
+      senderName: req.user.name || "Tenant",
       metadata: { renewalId: renewal._id, status },
     });
 
@@ -3073,6 +3150,7 @@ module.exports = {
   submitTenantRentPayment,
   getTenantOwnerPaymentDetails,
   getTenantInquiries,
+  requestTenantRevisit,
   createMaintenanceRequest,
   getTenantMaintenanceRequests,
   createMoveOutRequest,

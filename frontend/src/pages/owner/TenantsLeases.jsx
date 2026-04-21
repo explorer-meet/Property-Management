@@ -519,12 +519,14 @@ const TenantsLeases = () => {
       </div>
 
       <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => setSectionView("leases")}
-            className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${
-              sectionView === "leases" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+            className={`w-full rounded-xl border px-3 py-3 text-sm font-semibold transition-all ${
+              sectionView === "leases"
+                ? "border-cyan-200 bg-gradient-to-br from-cyan-50 to-blue-50 text-cyan-700 shadow-sm"
+                : "border-gray-200 bg-white text-gray-600 hover:bg-cyan-50 hover:text-cyan-700"
             }`}
           >
             Leases ({leases.length})
@@ -532,8 +534,10 @@ const TenantsLeases = () => {
           <button
             type="button"
             onClick={() => setSectionView("moveOut")}
-            className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${
-              sectionView === "moveOut" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+            className={`w-full rounded-xl border px-3 py-3 text-sm font-semibold transition-all ${
+              sectionView === "moveOut"
+                ? "border-rose-200 bg-gradient-to-br from-rose-50 to-red-50 text-rose-700 shadow-sm"
+                : "border-gray-200 bg-white text-gray-600 hover:bg-rose-50 hover:text-rose-700"
             }`}
           >
             Move-Out Requests ({moveOutRequests.length})

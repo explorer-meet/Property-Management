@@ -12,7 +12,7 @@ const {
   getVacantProperties, updatePropertyStatus,
   getOwnerMaintenanceRequests, updateMaintenanceStatus, addCommentToRequest,
   getOwnerDashboard, getOwnerAnalytics, exportOwnerAnalyticsCsv,
-  getTenantDashboard, getTenantLease, getTenantRentHistory, submitTenantRentPayment, getTenantOwnerPaymentDetails, getTenantInquiries,
+  getTenantDashboard, getTenantLease, getTenantRentHistory, submitTenantRentPayment, getTenantOwnerPaymentDetails, getTenantInquiries, requestTenantRevisit,
   createMaintenanceRequest, getTenantMaintenanceRequests,
   createMoveOutRequest, getTenantMoveOutRequests,
   getOwnerMoveOutRequests, decideMoveOutRequest, completeMoveOutRequest,
@@ -126,6 +126,7 @@ router.get("/tenant/rent-history", verifyToken, requireTenant, getTenantRentHist
 router.post("/tenant/rent/:id/submit-payment", verifyToken, requireTenant, submitTenantRentPayment);
 router.get("/tenant/owner-payment-details", verifyToken, requireTenant, getTenantOwnerPaymentDetails);
 router.get("/tenant/inquiries", verifyToken, requireTenant, getTenantInquiries);
+router.patch("/tenant/inquiries/:id/request-revisit", verifyToken, requireTenant, requestTenantRevisit);
 router.get("/tenant/renewals", verifyToken, requireTenant, getTenantLeaseRenewals);
 router.patch("/tenant/renewals/:id/decision", verifyToken, requireTenant, decideLeaseRenewal);
 
