@@ -61,6 +61,12 @@ const startOfDay = (value) => {
   return date;
 };
 
+const normalizeGraceDays = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.min(parsed, 31);
+};
+
 const sanitizePaymentInstructions = (input = {}) => {
   const value = input && typeof input === "object" ? input : {};
   return {
@@ -710,6 +716,7 @@ const assignTenant = async (req, res) => {
       rentAmount,
       securityDeposit,
       rentDueDay,
+      graceDays,
       lateFeeType,
       lateFeeValue,
     } = req.body;
@@ -734,6 +741,7 @@ const assignTenant = async (req, res) => {
       rentAmount,
       securityDeposit: securityDeposit || 0,
       rentDueDay: rentDueDay || 1,
+      graceDays: normalizeGraceDays(graceDays),
       lateFeeType: ["fixed", "percent"].includes(lateFeeType) ? lateFeeType : "fixed",
       lateFeeValue: Number(lateFeeValue || 0),
     });
@@ -773,6 +781,7 @@ const updateLease = async (req, res) => {
       rentAmount,
       securityDeposit,
       rentDueDay,
+      graceDays,
       lateFeeType,
       lateFeeValue,
     } = req.body;
@@ -784,6 +793,7 @@ const updateLease = async (req, res) => {
         rentAmount,
         securityDeposit,
         rentDueDay,
+        graceDays: normalizeGraceDays(graceDays),
         lateFeeType: ["fixed", "percent"].includes(lateFeeType) ? lateFeeType : "fixed",
         lateFeeValue: Number(lateFeeValue || 0),
       },
@@ -1056,9 +1066,20 @@ const markRentOverdue = async (req, res) => {
       .populate("lease")
       .populate("tenant", "name email")
       .populate("property", "propertyType address");
+    const today = startOfDay(new Date());
     let modifiedCount = 0;
 
     for (const record of records) {
+      const dueDate = startOfDay(record.dueDate);
+      if (!today || !dueDate) continue;
+
+      const graceDays = normalizeGraceDays(record.lease?.graceDays || 0);
+      const overdueStartsOn = new Date(dueDate);
+      overdueStartsOn.setDate(overdueStartsOn.getDate() + graceDays + 1);
+
+      // Apply overdue only after the due date + grace day window is fully crossed.
+      if (today < overdueStartsOn) continue;
+
       const lateType = record.lease?.lateFeeType || "fixed";
       const lateValue = Number(record.lease?.lateFeeValue || 0);
       const lateFeeAmount = lateType === "percent" ? Number(((record.amount * lateValue) / 100).toFixed(2)) : lateValue;
@@ -1073,7 +1094,7 @@ const markRentOverdue = async (req, res) => {
         recipient: record.tenant,
         role: "tenant",
         title: "Rent marked overdue",
-        message: `${record.month} ${record.year} rent is overdue. Late fee applied: $${Number(lateFeeAmount).toFixed(2)}.`,
+        message: `${record.month} ${record.year} rent is overdue. Late fee applied: INR ${Number(lateFeeAmount).toFixed(2)}.`,
         type: "rent",
         actionPath: "/tenant/rent",
         metadata: { rentId: record._id },

@@ -70,6 +70,7 @@ const PropertyWorkspace = () => {
     rentAmount: "",
     securityDeposit: "",
     rentDueDay: "1",
+    graceDays: "0",
     lateFeeType: "fixed",
     lateFeeValue: "0",
   });
@@ -81,6 +82,7 @@ const PropertyWorkspace = () => {
   const [docUpdatingId, setDocUpdatingId] = useState("");
   const [renewalSaving, setRenewalSaving] = useState(false);
   const [renewalCancellingId, setRenewalCancellingId] = useState("");
+  const [showCreateRenewalForm, setShowCreateRenewalForm] = useState(false);
   const [renewalForm, setRenewalForm] = useState({
     leaseId: "",
     proposedRentAmount: "",
@@ -257,6 +259,7 @@ const PropertyWorkspace = () => {
         rentAmount: Number(assignForm.rentAmount),
         securityDeposit: Number(assignForm.securityDeposit || 0),
         rentDueDay: Number(assignForm.rentDueDay || 1),
+        graceDays: Number(assignForm.graceDays || 0),
         lateFeeType: assignForm.lateFeeType,
         lateFeeValue: Number(assignForm.lateFeeValue || 0),
       });
@@ -269,6 +272,7 @@ const PropertyWorkspace = () => {
         rentAmount: "",
         securityDeposit: "",
         rentDueDay: "1",
+        graceDays: "0",
         lateFeeType: "fixed",
         lateFeeValue: "0",
       });
@@ -345,6 +349,7 @@ const PropertyWorkspace = () => {
       setRenewalSaving(true);
       await api.post("/owner/renewals", renewalForm);
       toast.success("Renewal request created.");
+      setShowCreateRenewalForm(false);
       setRenewalForm((prev) => ({ ...prev, note: "" }));
       await refreshWorkspace();
     } catch (err) {
@@ -681,6 +686,18 @@ const PropertyWorkspace = () => {
                         value={assignForm.rentDueDay}
                         onChange={(e) => setAssignForm((prev) => ({ ...prev, rentDueDay: e.target.value }))}
                         placeholder="1-31"
+                        className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-700">Grace Days</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="31"
+                        value={assignForm.graceDays}
+                        onChange={(e) => setAssignForm((prev) => ({ ...prev, graceDays: e.target.value }))}
+                        placeholder="0-31"
                         className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                       />
                     </div>
@@ -1045,96 +1062,118 @@ const PropertyWorkspace = () => {
 
       {activeTab === "renewals" && (
         <section className="space-y-5">
-          <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-indigo-50 p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="rounded-lg bg-violet-500 p-2">
-                <RotateCcw size={18} className="text-white" />
+          {showCreateRenewalForm && (
+            <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-indigo-50 p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-violet-500 p-2">
+                    <RotateCcw size={18} className="text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">Create Renewal Request</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateRenewalForm(false)}
+                  className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50"
+                >
+                  Cancel
+                </button>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Create Renewal Request</h3>
+
+              <form onSubmit={submitRenewal} className="space-y-4">
+                {/* Row 1: Lease Selection */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Select Tenant Lease</label>
+                    <select
+                      value={renewalForm.leaseId}
+                      onChange={(e) => setRenewalForm((prev) => ({ ...prev, leaseId: e.target.value }))}
+                      required
+                      className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                    >
+                      <option value="">Select Lease...</option>
+                      {leases.filter((lease) => lease.isActive).map((lease) => (
+                        <option key={lease._id} value={lease._id}>{lease.tenant?.name || "Tenant"}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Proposed Monthly Rent</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={renewalForm.proposedRentAmount}
+                      onChange={(e) => setRenewalForm((prev) => ({ ...prev, proposedRentAmount: e.target.value }))}
+                      placeholder="Amount"
+                      required
+                      className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Renewal Start Date</label>
+                    <input
+                      type="date"
+                      value={renewalForm.proposedLeaseStartDate}
+                      onChange={(e) => setRenewalForm((prev) => ({ ...prev, proposedLeaseStartDate: e.target.value }))}
+                      required
+                      className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: End Date & Notes */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Renewal End Date</label>
+                    <input
+                      type="date"
+                      value={renewalForm.proposedLeaseEndDate}
+                      onChange={(e) => setRenewalForm((prev) => ({ ...prev, proposedLeaseEndDate: e.target.value }))}
+                      required
+                      className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Additional Notes</label>
+                    <textarea
+                      rows={1}
+                      value={renewalForm.note}
+                      onChange={(e) => setRenewalForm((prev) => ({ ...prev, note: e.target.value }))}
+                      placeholder="Add any special terms or notes for tenant..."
+                      className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={renewalSaving || !renewalForm.leaseId}
+                  className="mt-4 w-full rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2.5 font-semibold text-white shadow-md transition-all hover:shadow-lg hover:from-violet-600 hover:to-indigo-700 disabled:opacity-60 sm:w-auto"
+                >
+                  {renewalSaving ? "Creating Renewal..." : "Create Renewal Request"}
+                </button>
+              </form>
             </div>
-
-            <form onSubmit={submitRenewal} className="space-y-4">
-              {/* Row 1: Lease Selection */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Select Tenant Lease</label>
-                  <select
-                    value={renewalForm.leaseId}
-                    onChange={(e) => setRenewalForm((prev) => ({ ...prev, leaseId: e.target.value }))}
-                    required
-                    className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  >
-                    <option value="">Select Lease...</option>
-                    {leases.filter((lease) => lease.isActive).map((lease) => (
-                      <option key={lease._id} value={lease._id}>{lease.tenant?.name || "Tenant"}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Proposed Monthly Rent</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={renewalForm.proposedRentAmount}
-                    onChange={(e) => setRenewalForm((prev) => ({ ...prev, proposedRentAmount: e.target.value }))}
-                    placeholder="Amount"
-                    required
-                    className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Renewal Start Date</label>
-                  <input
-                    type="date"
-                    value={renewalForm.proposedLeaseStartDate}
-                    onChange={(e) => setRenewalForm((prev) => ({ ...prev, proposedLeaseStartDate: e.target.value }))}
-                    required
-                    className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: End Date & Notes */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Renewal End Date</label>
-                  <input
-                    type="date"
-                    value={renewalForm.proposedLeaseEndDate}
-                    onChange={(e) => setRenewalForm((prev) => ({ ...prev, proposedLeaseEndDate: e.target.value }))}
-                    required
-                    className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-700">Additional Notes</label>
-                  <textarea
-                    rows={1}
-                    value={renewalForm.note}
-                    onChange={(e) => setRenewalForm((prev) => ({ ...prev, note: e.target.value }))}
-                    placeholder="Add any special terms or notes for tenant..."
-                    className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={renewalSaving || !renewalForm.leaseId}
-                className="mt-4 w-full rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2.5 font-semibold text-white shadow-md transition-all hover:shadow-lg hover:from-violet-600 hover:to-indigo-700 disabled:opacity-60 sm:w-auto"
-              >
-                {renewalSaving ? "Creating Renewal..." : "Create Renewal Request"}
-              </button>
-            </form>
-          </div>
+          )}
 
           {/* Renewal Records */}
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <h4 className="mb-4 text-base font-bold text-gray-900">Renewal History</h4>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h4 className="text-base font-bold text-gray-900">Renewal History</h4>
+              {!showCreateRenewalForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowCreateRenewalForm(true)}
+                  className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+                >
+                  Add Renewal Request
+                </button>
+              )}
+            </div>
             {renewals.length === 0 ? (
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-center">
                 <p className="text-sm text-gray-500">No renewal records for this property yet.</p>

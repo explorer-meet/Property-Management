@@ -100,6 +100,7 @@ const TenantsLeases = () => {
     rentAmount: "",
     securityDeposit: "",
     rentDueDay: "1",
+    graceDays: "0",
     lateFeeType: "fixed",
     lateFeeValue: "0",
   });
@@ -152,6 +153,7 @@ const TenantsLeases = () => {
       rentAmount: lease.rentAmount,
       securityDeposit: lease.securityDeposit,
       rentDueDay: lease.rentDueDay,
+      graceDays: lease.graceDays ?? 0,
       lateFeeType: lease.lateFeeType || "fixed",
       lateFeeValue: lease.lateFeeValue ?? 0,
     });
@@ -745,10 +747,9 @@ const TenantsLeases = () => {
                       <MapPin size={13} className="mt-0.5 text-gray-400" />
                       {l.property?.address?.street}, {l.property?.address?.city}, {l.property?.address?.state}
                     </p>
-                  </div>
-                      <p className="text-xs text-gray-500">Rent</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 text-sm">
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-2 text-sm">
                       <div className="rounded-lg border border-gray-100 px-3 py-2 bg-white">
+                      <p className="text-xs text-gray-500">Rent</p>
                       <p className="font-semibold text-gray-900">{formatCurrency(l.rentAmount)}/mo</p>
                     </div>
                     <div className="rounded-lg border border-gray-100 px-3 py-2 bg-white">
@@ -764,6 +765,7 @@ const TenantsLeases = () => {
                       <p className="font-semibold text-gray-900">
                         {l.lateFeeType === "percent" ? `${Number(l.lateFeeValue || 0)}%` : formatCurrency(l.lateFeeValue || 0)}
                       </p>
+                      <p className="mt-1 text-[11px] text-gray-500">Grace: {Number(l.graceDays || 0)} day(s)</p>
                     </div>
                     <div className="rounded-lg border border-gray-100 px-3 py-2 bg-white">
                       <p className="text-xs text-gray-500">Lease Start</p>
@@ -776,6 +778,7 @@ const TenantsLeases = () => {
                         {new Date(l.leaseEndDate).toLocaleDateString()}
                       </p>
                     </div>
+                  </div>
                   </div>
                 </div>
 
@@ -850,6 +853,10 @@ const TenantsLeases = () => {
               <input type="number" value={assignForm.rentDueDay} onChange={(e) => setAssignForm({ ...assignForm, rentDueDay: e.target.value })} min={1} max={31} className="input-field" />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Grace Days</label>
+              <input type="number" value={assignForm.graceDays} onChange={(e) => setAssignForm({ ...assignForm, graceDays: e.target.value })} min={0} max={31} className="input-field" />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Late Fee Type</label>
               <select value={assignForm.lateFeeType} onChange={(e) => setAssignForm({ ...assignForm, lateFeeType: e.target.value })} className="input-field">
                 <option value="fixed">Fixed Amount</option>
@@ -922,6 +929,10 @@ const TenantsLeases = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Rent Due Day</label>
               <input type="number" value={editForm.rentDueDay} onChange={(e) => setEditForm({ ...editForm, rentDueDay: e.target.value })} min={1} max={31} className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Grace Days</label>
+              <input type="number" value={editForm.graceDays ?? 0} onChange={(e) => setEditForm({ ...editForm, graceDays: e.target.value })} min={0} max={31} className="input-field" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Late Fee Type</label>
