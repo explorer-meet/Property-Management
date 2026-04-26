@@ -642,6 +642,26 @@ const TenantDashboard = () => {
                 >
                   <DoorOpen size={12} /> {pendingMoveOut ? "Move-Out Pending" : "Request Move-Out"}
                 </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(
+                        `${(import.meta.env.VITE_API_URL || "http://localhost:5000/api")}/leases/${lease._id}/rent-agreement`,
+                        { headers: { Authorization: `Bearer ${localStorage.getItem("pms_token")}` } }
+                      );
+                      if (!response.ok) throw new Error();
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url; a.download = `rent-agreement-${lease._id}.pdf`;
+                      a.click(); URL.revokeObjectURL(url);
+                    } catch { toast.error("Unable to download agreement."); }
+                  }}
+                  className="mt-1 rounded-md border border-blue-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 inline-flex items-center gap-1"
+                >
+                  <FileText size={12} /> Download Rent Agreement
+                </button>
               </div>
 
 

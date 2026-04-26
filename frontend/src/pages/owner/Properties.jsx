@@ -18,7 +18,7 @@ import {
   Navigation,
   LayoutDashboard,
 } from "lucide-react";
-import { PageHeader, Modal, StatusBadge, EmptyState } from "../../components/UI";
+import { PageHeader, Modal, StatusBadge, EmptyState, PropertyImageCarousel } from "../../components/UI";
 import api from "../../utils/api";
 import toast from "react-hot-toast";
 import { resolvePropertyCoverImage } from "../../utils/propertyImages";
@@ -262,14 +262,12 @@ const Properties = () => {
               <div key={p._id} className="group rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
                 {/* Coloured top stripe */}
                 <div className={`h-1.5 w-full bg-gradient-to-r ${meta.grad}`} />
-                <div className="relative h-44 overflow-hidden">
-                  <img
-                    src={resolvePropertyCoverImage(p, apiOrigin)}
-                    alt={p.propertyType}
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
-                </div>
+                <PropertyImageCarousel
+                  photoUrls={p.photoUrls || []}
+                  propertyType={p.propertyType}
+                  apiOrigin={apiOrigin}
+                  height="h-44"
+                />
                 <div className="p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div className={`inline-flex items-center gap-2 rounded-xl ${tc.bg} ${tc.text} px-3 py-1.5 text-xs font-bold ring-1 ${tc.ring}/40`}>

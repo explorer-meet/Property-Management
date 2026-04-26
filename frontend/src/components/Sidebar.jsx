@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import {
   Building2, LayoutDashboard, Home, Users, DollarSign,
   Wrench, Menu, X, MapPin, ChevronRight, UserCircle2, Bell, RefreshCcw, DoorOpen, MessageCircle, ChevronDown, Landmark,
+  Receipt, BarChart2, Star,
 } from "lucide-react";
 
 import api from "../utils/api";
@@ -35,6 +36,8 @@ const ownerLinks = [
     items: [
       { to: "/owner/rent", label: "Rent Management", icon: DollarSign },
       { to: "/owner/payment-details", label: "Payment Details", icon: Landmark },
+      { to: "/owner/expenses", label: "Expense Tracker", icon: Receipt },
+      { to: "/owner/analytics", label: "Analytics & Tax", icon: BarChart2 },
       { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
     ]
   },
@@ -42,6 +45,7 @@ const ownerLinks = [
     section: "Communication",
     items: [
       { to: "/owner/inquiries", label: "Inquiries", icon: MessageCircle },
+      { to: "/owner/reviews", label: "Property Reviews", icon: Star },
       { to: "/owner/notifications", label: "Notifications", icon: Bell },
       { to: "/owner/profile", label: "My Profile", icon: UserCircle2 },
     ]
@@ -60,6 +64,7 @@ const tenantLinks = [
     items: [
       { to: "/tenant/rent", label: "Rent & Payments", icon: DollarSign },
       { to: "/tenant/maintenance", label: "My Requests", icon: Wrench },
+      { to: "/tenant/reviews", label: "My Reviews", icon: Star },
     ]
   },
   {
@@ -87,6 +92,16 @@ const Sidebar = () => {
       setActiveInquiryCount(count);
     }).catch(() => {});
   }, [isOwner]);
+
+  // Auto-expand the section that contains the currently active route
+  useEffect(() => {
+    const links = isOwner ? ownerLinks : tenantLinks;
+    links.forEach((section) => {
+      if (section.items?.some((item) => location.pathname.startsWith(item.to))) {
+        setExpandedSections((prev) => ({ ...prev, [section.section]: true }));
+      }
+    });
+  }, [location.pathname, isOwner]);
 
   const toggleSection = (section) => {
     setExpandedSections((prev) => ({
@@ -117,7 +132,7 @@ const Sidebar = () => {
         : `${apiOrigin}/${user.profilePictureUrl}`
     : "";
 
-  const SidebarContent = () => (
+  const sidebarContent = (
     <div className={`relative flex flex-col h-full overflow-hidden bg-gradient-to-b ${brandPanelClass}`}>
       <div className="pointer-events-none absolute -top-14 -left-10 h-44 w-44 rounded-full bg-white/50 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-40 w-40 rounded-full bg-slate-200/30 blur-3xl" />
@@ -313,12 +328,12 @@ const Sidebar = () => {
         >
           <X size={18} />
         </button>
-        <SidebarContent />
+        {sidebarContent}
       </div>
 
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-72 h-screen sticky top-0 border-r border-white/70 shadow-[0_8px_30px_rgba(15,23,42,0.10)] backdrop-blur-sm">
-        <SidebarContent />
+        {sidebarContent}
       </aside>
     </>
   );

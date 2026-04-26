@@ -1,5 +1,179 @@
-import React from "react";
-import { X } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { X, ChevronLeft, ChevronRight, Images } from "lucide-react";
+
+/* ─────────────────────────────────────────────
+   PROPERTY IMAGE CAROUSEL
+   Props:
+     photoUrls   – array of raw paths/URLs from DB
+     propertyType – string ("Home"|"Flat" etc.) for fallback
+     apiOrigin   – backend origin string (e.g. "http://localhost:5000")
+     height      – Tailwind h-* class (default "h-48")
+     autoInterval – ms between slides (default 3500)
+───────────────────────────────────────────── */
+// Multiple curated static images per property type so the carousel
+// animates even when no photos have been uploaded.
+const FALLBACK_IMAGES = {
+  Flat: [
+    "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=900&q=80", // modern flat interior
+    "https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=900&q=80", // bright apartment living room
+    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=900&q=80",  // cosy flat with balcony
+    "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=900&q=80", // open plan flat kitchen
+  ],
+  Office: [
+    "https://images.unsplash.com/photo-1497366216548-37526070297c?w=900&q=80", // open office space
+    "https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=900&q=80", // modern office lobby
+    "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=900&q=80", // glass-walled office
+    "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=900&q=80", // co-working space
+  ],
+  Shop: [
+    "https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=900&q=80", // retail storefront
+    "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=900&q=80", // shopping interior
+    "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=900&q=80", // boutique shop interior
+    "https://images.unsplash.com/photo-1534452203293-494d7ddbf7e0?w=900&q=80", // commercial shopfront
+  ],
+  Home: [
+    "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=900&q=80", // suburban home exterior
+    "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=900&q=80", // modern home front
+    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=900&q=80", // luxury home with pool
+    "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=900&q=80", // cosy home living room
+  ],
+  Villa: [
+    "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=900&q=80", // villa exterior
+    "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=900&q=80", // luxury villa pool
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900&q=80", // modern villa facade
+    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=900&q=80", // villa with garden
+  ],
+  House: [
+    "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=900&q=80", // classic house
+    "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=900&q=80", // house with driveway
+    "https://images.unsplash.com/photo-1576941089067-2de3c901e126?w=900&q=80", // house with porch
+    "https://images.unsplash.com/photo-1523217582562-09d0def993a6?w=900&q=80", // house interior hallway
+  ],
+};
+
+const DEFAULT_FALLBACKS = [
+  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=900&q=80",
+  "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=900&q=80",
+  "https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?w=900&q=80",
+];
+
+const resolveUrl = (src, apiOrigin) => {
+  if (!src) return "";
+  if (src.startsWith("http")) return src;
+  return `${apiOrigin}${src}`;
+};
+
+export const PropertyImageCarousel = ({
+  photoUrls = [],
+  propertyType = "",
+  apiOrigin = "",
+  height = "h-48",
+  autoInterval = 3500,
+}) => {
+  const resolvedPhotos = photoUrls.length > 0
+    ? photoUrls.map((u) => resolveUrl(u, apiOrigin))
+    : (FALLBACK_IMAGES[propertyType] || DEFAULT_FALLBACKS);
+
+  const total = resolvedPhotos.length;
+  const [active, setActive] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const [direction, setDirection] = useState("next"); // "next" | "prev"
+
+  const goTo = useCallback((idx, dir = "next") => {
+    if (total <= 1 || animating) return;
+    setDirection(dir);
+    setAnimating(true);
+    setTimeout(() => {
+      setActive(idx);
+      setAnimating(false);
+    }, 350);
+  }, [total, animating]);
+
+  const next = useCallback(() => goTo((active + 1) % total, "next"), [active, total, goTo]);
+  const prev = useCallback(() => goTo((active - 1 + total) % total, "prev"), [active, total, goTo]);
+
+  // Auto-advance
+  useEffect(() => {
+    if (total <= 1) return;
+    const id = setInterval(next, autoInterval);
+    return () => clearInterval(id);
+  }, [total, next, autoInterval]);
+
+  const slideClass = animating
+    ? direction === "next"
+      ? "translate-x-full opacity-0"
+      : "-translate-x-full opacity-0"
+    : "translate-x-0 opacity-100";
+
+  return (
+    <div className={`relative ${height} w-full overflow-hidden select-none bg-gray-100`}>
+      {/* Slide image */}
+      <img
+        key={active}
+        src={resolvedPhotos[active]}
+        alt={`Property ${active + 1}`}
+        className={`absolute inset-0 h-full w-full object-cover transition-all duration-350 ease-in-out ${slideClass}`}
+        loading="lazy"
+        onError={(e) => {
+          e.currentTarget.src = FALLBACK_IMAGES[propertyType] ||
+            "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=900&q=80";
+        }}
+      />
+
+      {/* Gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+
+      {/* Photo count badge */}
+      {total > 1 && (
+        <div className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+          <Images size={10} />
+          {active + 1}/{total}
+        </div>
+      )}
+
+      {/* Prev / Next arrows — visible on hover */}
+      {total > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); prev(); }}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all duration-200 backdrop-blur-sm"
+            aria-label="Previous photo"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); next(); }}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-all duration-200 backdrop-blur-sm"
+            aria-label="Next photo"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </>
+      )}
+
+      {/* Dot indicators */}
+      {total > 1 && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+          {resolvedPhotos.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); goTo(i, i > active ? "next" : "prev"); }}
+              className={`rounded-full transition-all duration-250 ${
+                i === active
+                  ? "w-4 h-1.5 bg-white"
+                  : "w-1.5 h-1.5 bg-white/55 hover:bg-white/80"
+              }`}
+              aria-label={`Photo ${i + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /* ─────────────────────────────────────────────
    STAT CARD

@@ -12,6 +12,8 @@ const ComplianceDocument = require("../models/ComplianceDocument");
 const LeaseRenewal = require("../models/LeaseRenewal");
 const PropertyInquiry = require("../models/PropertyInquiry");
 const Notification = require("../models/Notification");
+const Expense = require("../models/Expense");
+const PropertyReview = require("../models/PropertyReview");
 const PDFDocument = require("pdfkit");
 const { StatusCodes } = require("http-status-codes");
 const { sendEventEmail } = require("../services/emailService");
@@ -3114,6 +3116,934 @@ const generateFeaturesDocument = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: Owner Expense Tracker
+// ─────────────────────────────────────────────────────────────────────────────
+
+const addExpense = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const { propertyId, category, title, amount, date, notes } = req.body;
+
+    if (!propertyId || !category || !title || !amount || !date) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "propertyId, category, title, amount, and date are required." });
+    }
+
+    const property = await Property.findOne({ _id: propertyId, owner: ownerId, isActive: true });
+    if (!property) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
+    }
+
+    const parsedAmount = parseMoney(amount);
+    if (parsedAmount <= 0) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Amount must be greater than 0." });
+    }
+
+    const expense = await Expense.create({
+      owner: ownerId,
+      property: propertyId,
+      category,
+      title: title.trim(),
+      amount: parsedAmount,
+      date: new Date(date),
+      notes: (notes || "").trim(),
+    });
+
+    await expense.populate("property", "propertyType address");
+    res.status(StatusCodes.CREATED).json({ message: "Expense added.", expense });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getOwnerExpenses = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const { propertyId, category, financialYear, startDate, endDate } = req.query;
+
+    const filter = { owner: ownerId };
+    if (propertyId) filter.property = propertyId;
+    if (category) filter.category = category;
+    if (financialYear) filter.financialYear = financialYear;
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+
+    const expenses = await Expense.find(filter)
+      .populate("property", "propertyType address")
+      .sort({ date: -1 });
+
+    // Aggregate totals by category
+    const categoryTotals = expenses.reduce((acc, e) => {
+      acc[e.category] = (acc[e.category] || 0) + e.amount;
+      return acc;
+    }, {});
+
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+    // Net income: total paid rent minus expenses (filtered by same property/period if applicable)
+    const rentFilter = { owner: ownerId, status: "Paid" };
+    if (propertyId) rentFilter.property = propertyId;
+    if (startDate || endDate) {
+      rentFilter.paidDate = {};
+      if (startDate) rentFilter.paidDate.$gte = new Date(startDate);
+      if (endDate) rentFilter.paidDate.$lte = new Date(endDate);
+    }
+    const rentAgg = await RentPayment.aggregate([
+      { $match: { owner: toObjectId(ownerId), status: "Paid", ...(propertyId ? { property: toObjectId(propertyId) } : {}) } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const totalRentCollected = rentAgg[0]?.total || 0;
+    const netIncome = totalRentCollected - totalExpenses;
+
+    res.status(StatusCodes.OK).json({ expenses, categoryTotals, totalExpenses, totalRentCollected, netIncome });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updateExpense = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const expense = await Expense.findOne({ _id: req.params.id, owner: ownerId });
+    if (!expense) return res.status(StatusCodes.NOT_FOUND).json({ message: "Expense not found." });
+
+    const { category, title, amount, date, notes } = req.body;
+    if (category) expense.category = category;
+    if (title) expense.title = title.trim();
+    if (amount !== undefined) {
+      const parsed = parseMoney(amount);
+      if (parsed <= 0) return res.status(StatusCodes.BAD_REQUEST).json({ message: "Amount must be greater than 0." });
+      expense.amount = parsed;
+    }
+    if (date) expense.date = new Date(date);
+    if (notes !== undefined) expense.notes = (notes || "").trim();
+
+    await expense.save();
+    await expense.populate("property", "propertyType address");
+    res.status(StatusCodes.OK).json({ message: "Expense updated.", expense });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const deleteExpense = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const expense = await Expense.findOneAndDelete({ _id: req.params.id, owner: ownerId });
+    if (!expense) return res.status(StatusCodes.NOT_FOUND).json({ message: "Expense not found." });
+    res.status(StatusCodes.OK).json({ message: "Expense deleted." });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: Advanced Analytics & Tax Reports
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getAdvancedAnalytics = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const { financialYear } = req.query;
+
+    // Determine date range from financial year (default: current FY)
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    let fyStartYear = currentMonth >= 4 ? currentYear : currentYear - 1;
+
+    if (financialYear && /^\d{4}-\d{2}$/.test(financialYear)) {
+      fyStartYear = parseInt(financialYear.split("-")[0], 10);
+    }
+
+    const fyStart = new Date(fyStartYear, 3, 1);   // April 1
+    const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59); // March 31
+
+    const ownerOid = toObjectId(ownerId);
+    const monthLong = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const fyMonths = [
+      { year: fyStartYear, month: 4 },
+      { year: fyStartYear, month: 5 },
+      { year: fyStartYear, month: 6 },
+      { year: fyStartYear, month: 7 },
+      { year: fyStartYear, month: 8 },
+      { year: fyStartYear, month: 9 },
+      { year: fyStartYear, month: 10 },
+      { year: fyStartYear, month: 11 },
+      { year: fyStartYear, month: 12 },
+      { year: fyStartYear + 1, month: 1 },
+      { year: fyStartYear + 1, month: 2 },
+      { year: fyStartYear + 1, month: 3 },
+    ];
+    const fyMonthYearClauses = fyMonths.map(({ year, month }) => ({
+      year,
+      $or: [
+        { month },
+        { month: String(month) },
+        { month: monthLong[month - 1] },
+        { month: monthShort[month - 1] },
+      ],
+    }));
+    const paidRentFyMatch = {
+      owner: ownerOid,
+      status: "Paid",
+      $or: [
+        { paidDate: { $gte: fyStart, $lte: fyEnd } },
+        {
+          $and: [
+            { $or: [{ paidDate: { $exists: false } }, { paidDate: null }] },
+            { $or: fyMonthYearClauses },
+          ],
+        },
+      ],
+    };
+    const monthToNumberExpr = {
+      $switch: {
+        branches: [
+          { case: { $in: ["$month", ["January", "Jan"]] }, then: 1 },
+          { case: { $in: ["$month", ["February", "Feb"]] }, then: 2 },
+          { case: { $in: ["$month", ["March", "Mar"]] }, then: 3 },
+          { case: { $in: ["$month", ["April", "Apr"]] }, then: 4 },
+          { case: { $in: ["$month", ["May"]] }, then: 5 },
+          { case: { $in: ["$month", ["June", "Jun"]] }, then: 6 },
+          { case: { $in: ["$month", ["July", "Jul"]] }, then: 7 },
+          { case: { $in: ["$month", ["August", "Aug"]] }, then: 8 },
+          { case: { $in: ["$month", ["September", "Sep"]] }, then: 9 },
+          { case: { $in: ["$month", ["October", "Oct"]] }, then: 10 },
+          { case: { $in: ["$month", ["November", "Nov"]] }, then: 11 },
+          { case: { $in: ["$month", ["December", "Dec"]] }, then: 12 },
+        ],
+        default: { $convert: { input: "$month", to: "int", onError: 0, onNull: 0 } },
+      },
+    };
+
+    // Monthly rent income (last 12 months within FY)
+    const monthlyRent = await RentPayment.aggregate([
+      { $match: paidRentFyMatch },
+      {
+        $addFields: {
+          analyticsMonth: {
+            $cond: [
+              { $ifNull: ["$paidDate", false] },
+              { $month: "$paidDate" },
+              monthToNumberExpr,
+            ],
+          },
+          analyticsYear: {
+            $cond: [
+              { $ifNull: ["$paidDate", false] },
+              { $year: "$paidDate" },
+              "$year",
+            ],
+          },
+        },
+      },
+      { $match: { analyticsMonth: { $gte: 1, $lte: 12 } } },
+      { $group: { _id: { month: "$analyticsMonth", year: "$analyticsYear" }, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+      { $sort: { "_id.year": 1, "_id.month": 1 } },
+    ]);
+
+    // Monthly expenses
+    const monthlyExpenses = await Expense.aggregate([
+      { $match: { owner: ownerOid, date: { $gte: fyStart, $lte: fyEnd } } },
+      {
+        $group: {
+          _id: { month: { $month: "$date" }, year: { $year: "$date" } },
+          total: { $sum: "$amount" },
+        },
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } },
+    ]);
+
+    // Expenses by category
+    const expensesByCategory = await Expense.aggregate([
+      { $match: { owner: ownerOid, date: { $gte: fyStart, $lte: fyEnd } } },
+      { $group: { _id: "$category", total: { $sum: "$amount" } } },
+      { $sort: { total: -1 } },
+    ]);
+
+    // Occupancy timeline (per property, count of months occupied vs total months in FY)
+    const properties = await Property.find({ owner: ownerId, isActive: true }, "propertyType address status");
+    const occupancyData = await Promise.all(
+      properties.map(async (p) => {
+        const monthsOccupied = await RentPayment.distinct("month", {
+          owner: ownerOid,
+          property: p._id,
+          status: "Paid",
+          paidDate: { $gte: fyStart, $lte: fyEnd },
+        });
+        return {
+          propertyId: p._id,
+          label: `${p.propertyType} - ${p.address?.city || ""}`,
+          monthsOccupied: monthsOccupied.length,
+          currentStatus: p.status,
+        };
+      })
+    );
+
+    // Maintenance cost breakdown
+    const maintenanceByCategory = await MaintenanceRequest.aggregate([
+      { $match: { owner: ownerOid, createdAt: { $gte: fyStart, $lte: fyEnd } } },
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+
+    // Income statement totals
+    const totalRentAgg = await RentPayment.aggregate([
+      { $match: paidRentFyMatch },
+      { $group: { _id: null, total: { $sum: "$amount" }, lateFees: { $sum: "$lateFeeAmount" } } },
+    ]);
+    const totalExpensesAgg = await Expense.aggregate([
+      { $match: { owner: ownerOid, date: { $gte: fyStart, $lte: fyEnd } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+
+    const totalIncome = totalRentAgg[0]?.total || 0;
+    const totalLateFees = totalRentAgg[0]?.lateFees || 0;
+    const totalExpensesAmount = totalExpensesAgg[0]?.total || 0;
+    const netProfit = totalIncome + totalLateFees - totalExpensesAmount;
+
+    res.status(StatusCodes.OK).json({
+      financialYear: `${fyStartYear}-${String(fyStartYear + 1).slice(2)}`,
+      fyStart,
+      fyEnd,
+      incomeStatement: {
+        totalRentIncome: totalIncome,
+        totalLateFees,
+        totalExpenses: totalExpensesAmount,
+        netProfit,
+      },
+      monthlyRent,
+      monthlyExpenses,
+      expensesByCategory,
+      occupancyData,
+      maintenanceByCategory,
+    });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const downloadTaxReport = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const { financialYear } = req.query;
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    let fyStartYear = currentMonth >= 4 ? currentYear : currentYear - 1;
+
+    if (financialYear && /^\d{4}-\d{2}$/.test(financialYear)) {
+      fyStartYear = parseInt(financialYear.split("-")[0], 10);
+    }
+
+    const fyStart = new Date(fyStartYear, 3, 1);
+    const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59);
+    const fyLabel = `${fyStartYear}-${String(fyStartYear + 1).slice(2)}`;
+
+    const ownerOid = toObjectId(ownerId);
+    const owner = await User.findById(ownerId, "name email phone");
+
+    const [rentPayments, expenses, properties] = await Promise.all([
+      RentPayment.find({ owner: ownerOid, status: "Paid", paidDate: { $gte: fyStart, $lte: fyEnd } })
+        .populate("property", "propertyType address")
+        .populate("tenant", "name email")
+        .sort({ paidDate: 1 }),
+      Expense.find({ owner: ownerOid, date: { $gte: fyStart, $lte: fyEnd } })
+        .populate("property", "propertyType address")
+        .sort({ date: 1 }),
+      Property.find({ owner: ownerOid, isActive: true }, "propertyType address"),
+    ]);
+
+    const totalIncome = rentPayments.reduce((s, r) => s + (r.amount || 0), 0);
+    const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+    const netProfit = totalIncome - totalExpenses;
+
+    const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
+    const filename = `tax-report-FY${fyLabel}-${Date.now()}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    const contentWidth = doc.page.width - 100;
+    let y = 50;
+
+    const ensureSpace = (h) => {
+      if (y + h > doc.page.height - 60) { doc.addPage(); y = 50; }
+    };
+
+    const sectionHeader = (title) => {
+      ensureSpace(32);
+      doc.roundedRect(50, y, contentWidth, 24, 5).fill("#1d4ed8");
+      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(11).text(title, 62, y + 7);
+      y += 32;
+    };
+
+    const row = (label, value, shade) => {
+      ensureSpace(20);
+      if (shade) doc.rect(50, y, contentWidth, 18).fill("#f8fafc");
+      doc.fillColor("#334155").font("Helvetica").fontSize(9.5).text(label, 62, y + 4, { width: contentWidth * 0.6 });
+      doc.fillColor("#0f172a").font("Helvetica-Bold").text(value, 62 + contentWidth * 0.6, y + 4, { width: contentWidth * 0.35, align: "right" });
+      doc.rect(50, y, contentWidth, 18).stroke("#e2e8f0");
+      y += 20;
+    };
+
+    // Cover
+    doc.roundedRect(50, y, contentWidth, 80, 10).fill("#1e3a8a");
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(20).text("ANNUAL TAX REPORT", 66, y + 20);
+    doc.font("Helvetica").fontSize(11).fillColor("#bfdbfe").text(`Financial Year ${fyLabel}`, 66, y + 50);
+    y += 100;
+
+    doc.fillColor("#475569").font("Helvetica").fontSize(10)
+      .text(`Owner: ${owner?.name || "-"}`, 50, y)
+      .text(`Email: ${owner?.email || "-"}`, 50, y + 14)
+      .text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 50, y + 28);
+    y += 60;
+
+    // Income Summary
+    sectionHeader("INCOME SUMMARY");
+    row("Total Rent Collected", formatCurrency(totalIncome), false);
+    row("Total Expenses", formatCurrency(totalExpenses), true);
+    ensureSpace(22);
+    doc.roundedRect(50, y, contentWidth, 22, 4).fill("#dcfce7");
+    doc.fillColor("#14532d").font("Helvetica-Bold").fontSize(11)
+      .text("NET PROFIT / TAXABLE INCOME", 62, y + 6)
+      .text(formatCurrency(netProfit), 62 + contentWidth * 0.6, y + 6, { width: contentWidth * 0.35, align: "right" });
+    y += 32;
+
+    // Property-wise income
+    sectionHeader("PROPERTY-WISE RENT INCOME");
+    const byProperty = {};
+    rentPayments.forEach((r) => {
+      const pid = String(r.property?._id);
+      if (!byProperty[pid]) {
+        byProperty[pid] = { label: `${r.property?.propertyType || "-"} - ${r.property?.address?.city || "-"}`, total: 0, count: 0 };
+      }
+      byProperty[pid].total += r.amount || 0;
+      byProperty[pid].count += 1;
+    });
+    Object.values(byProperty).forEach((p, i) => {
+      row(`${p.label} (${p.count} payments)`, formatCurrency(p.total), i % 2 === 0);
+    });
+    if (Object.keys(byProperty).length === 0) {
+      doc.fillColor("#64748b").font("Helvetica").fontSize(9).text("No payments recorded.", 62, y); y += 16;
+    }
+
+    // Expense category breakdown
+    y += 10;
+    sectionHeader("EXPENSES BY CATEGORY");
+    const byCat = {};
+    expenses.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
+    Object.entries(byCat).forEach(([cat, total], i) => {
+      row(cat, formatCurrency(total), i % 2 === 0);
+    });
+    if (expenses.length === 0) {
+      doc.fillColor("#64748b").font("Helvetica").fontSize(9).text("No expenses recorded.", 62, y); y += 16;
+    }
+
+    // Detailed rent payments table
+    y += 10;
+    sectionHeader("DETAILED RENT PAYMENTS");
+    ensureSpace(18);
+    doc.roundedRect(50, y, contentWidth, 16, 3).fill("#dbeafe");
+    doc.fillColor("#1e40af").font("Helvetica-Bold").fontSize(8.5)
+      .text("Month/Year", 56, y + 4)
+      .text("Tenant", 150, y + 4)
+      .text("Property", 280, y + 4)
+      .text("Amount", 430, y + 4, { width: 80, align: "right" });
+    y += 18;
+    rentPayments.forEach((r, i) => {
+      ensureSpace(16);
+      if (i % 2 === 0) doc.rect(50, y, contentWidth, 16).fill("#f8fafc");
+      doc.fillColor("#374151").font("Helvetica").fontSize(8.5)
+        .text(`${r.month || "-"} ${r.year || ""}`, 56, y + 3)
+        .text(r.tenant?.name || "-", 150, y + 3, { width: 120 })
+        .text(`${r.property?.propertyType || "-"} ${r.property?.address?.city || ""}`, 280, y + 3, { width: 140 })
+        .text(formatCurrency(r.amount), 430, y + 3, { width: 80, align: "right" });
+      doc.rect(50, y, contentWidth, 16).stroke("#e2e8f0");
+      y += 18;
+    });
+
+    // Footer
+    doc.addPage();
+    y = 50;
+    sectionHeader("DISCLAIMER");
+    doc.fillColor("#475569").font("Helvetica").fontSize(9)
+      .text("This report is auto-generated from your property management records for informational purposes only.", 62, y, { width: contentWidth - 24 });
+    y += 16;
+    doc.text("Consult a qualified Chartered Accountant for official tax filings (ITR). The figures in this report", 62, y, { width: contentWidth - 24 });
+    y += 14;
+    doc.text("should be cross-verified with actual bank statements before submission.", 62, y);
+
+    doc.end();
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: Digital Rent Agreement PDF
+// ─────────────────────────────────────────────────────────────────────────────
+
+const downloadRentAgreement = async (req, res) => {
+  try {
+    const lease = await Lease.findById(req.params.leaseId)
+      .populate("property", "propertyType address numberOfRooms description")
+      .populate("tenant", "name email phone")
+      .populate("owner", "name email phone");
+
+    if (!lease) return res.status(StatusCodes.NOT_FOUND).json({ message: "Lease not found." });
+
+    const requesterId = String(req.user.userId);
+    const isOwner = req.user.role === "owner" && String(lease.owner?._id) === requesterId;
+    const isTenant = req.user.role === "tenant" && String(lease.tenant?._id) === requesterId;
+    if (!isOwner && !isTenant) {
+      return res.status(StatusCodes.FORBIDDEN).json({ message: "Not authorized." });
+    }
+
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+    const filename = `rent-agreement-${lease._id}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    const contentWidth = doc.page.width - 100;
+    let y = 50;
+
+    const ensureSpace = (h) => {
+      if (y + h > doc.page.height - 60) { doc.addPage(); y = 50; }
+    };
+
+    // Header
+    doc.roundedRect(50, y, contentWidth, 70, 10).fill("#1e3a8a");
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(18).text("RESIDENTIAL RENTAL AGREEMENT", 66, y + 18);
+    doc.font("Helvetica").fontSize(10).fillColor("#bfdbfe").text("This agreement is computer-generated from lease records.", 66, y + 46);
+    y += 85;
+
+    // Preamble
+    const leaseStart = lease.leaseStartDate ? new Date(lease.leaseStartDate).toLocaleDateString("en-IN") : "-";
+    const leaseEnd = lease.leaseEndDate ? new Date(lease.leaseEndDate).toLocaleDateString("en-IN") : "-";
+    const propertyAddress = [
+      lease.property?.address?.street,
+      lease.property?.address?.city,
+      lease.property?.address?.state,
+      lease.property?.address?.pincode,
+    ].filter(Boolean).join(", ");
+
+    doc.fillColor("#1e293b").font("Helvetica").fontSize(10)
+      .text(
+        `This Rent Agreement is entered into on ${new Date().toLocaleDateString("en-IN")} between:`,
+        50, y, { width: contentWidth }
+      );
+    y += 22;
+
+    // Parties
+    const cardH = 80;
+    // Landlord
+    doc.roundedRect(50, y, (contentWidth - 14) / 2, cardH, 8).fillAndStroke("#eff6ff", "#bfdbfe");
+    doc.fillColor("#1e40af").font("Helvetica-Bold").fontSize(10).text("LANDLORD (First Party)", 62, y + 10);
+    doc.fillColor("#0f172a").font("Helvetica").fontSize(9.5)
+      .text(lease.owner?.name || "-", 62, y + 28)
+      .text(lease.owner?.email || "-", 62, y + 42)
+      .text(lease.owner?.phone || "-", 62, y + 56);
+    // Tenant
+    const tx = 50 + (contentWidth - 14) / 2 + 14;
+    doc.roundedRect(tx, y, (contentWidth - 14) / 2, cardH, 8).fillAndStroke("#f0fdf4", "#bbf7d0");
+    doc.fillColor("#166534").font("Helvetica-Bold").fontSize(10).text("TENANT (Second Party)", tx + 12, y + 10);
+    doc.fillColor("#0f172a").font("Helvetica").fontSize(9.5)
+      .text(lease.tenant?.name || "-", tx + 12, y + 28)
+      .text(lease.tenant?.email || "-", tx + 12, y + 42)
+      .text(lease.tenant?.phone || "-", tx + 12, y + 56);
+    y += cardH + 18;
+
+    // Property details
+    doc.roundedRect(50, y, contentWidth, 20, 5).fill("#1d4ed8");
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(10).text("PROPERTY DETAILS", 62, y + 5);
+    y += 26;
+
+    const clauseRow = (label, value, shade) => {
+      ensureSpace(20);
+      if (shade) doc.rect(50, y, contentWidth, 18).fill("#f8fafc");
+      doc.fillColor("#475569").font("Helvetica-Bold").fontSize(9).text(label, 62, y + 4, { width: 180 });
+      doc.fillColor("#0f172a").font("Helvetica").fontSize(9.5).text(value || "-", 246, y + 4, { width: contentWidth - 200 });
+      doc.rect(50, y, contentWidth, 18).stroke("#e2e8f0");
+      y += 20;
+    };
+
+    clauseRow("Property Type", lease.property?.propertyType || "-", false);
+    clauseRow("Address", propertyAddress, true);
+    clauseRow("Number of Rooms", String(lease.property?.numberOfRooms || "-"), false);
+    clauseRow("Lease Start Date", leaseStart, true);
+    clauseRow("Lease End Date", leaseEnd, false);
+    clauseRow("Monthly Rent", formatCurrency(lease.rentAmount), true);
+    clauseRow("Security Deposit", formatCurrency(lease.securityDeposit || 0), false);
+    clauseRow("Rent Due Day", `${lease.rentDueDay || 1}${getDaySuffix(lease.rentDueDay || 1)} of every month`, true);
+    clauseRow("Grace Period", `${lease.graceDays || 0} day(s)`, false);
+    clauseRow("Late Fee", lease.lateFeeType === "percent" ? `${lease.lateFeeValue || 0}% of monthly rent` : formatCurrency(lease.lateFeeValue || 0), true);
+    y += 10;
+
+    // Terms and Conditions
+    ensureSpace(28);
+    doc.roundedRect(50, y, contentWidth, 20, 5).fill("#1d4ed8");
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(10).text("TERMS AND CONDITIONS", 62, y + 5);
+    y += 28;
+
+    const clauses = [
+      "1. The Tenant shall pay the monthly rent on or before the due date specified above.",
+      "2. A late fee will be charged as specified above if rent is paid after the grace period.",
+      "3. The Security Deposit is refundable at the end of the tenancy, subject to deductions for damages beyond normal wear and tear.",
+      "4. The Tenant shall maintain the premises in good condition and shall not cause any damage to the property.",
+      "5. The Tenant shall not sublet the property without the prior written consent of the Landlord.",
+      "6. The Tenant shall use the premises solely for residential purposes.",
+      "7. The Landlord shall be responsible for major structural repairs. The Tenant shall be responsible for minor day-to-day maintenance.",
+      "8. Either party may terminate this agreement with 30 days' written notice, subject to the terms of the lease.",
+      "9. This agreement is subject to the laws of India and the respective state legislation on rent control.",
+      "10. Any disputes arising under this agreement shall be subject to the jurisdiction of courts in the applicable city.",
+    ];
+
+    clauses.forEach((clause) => {
+      ensureSpace(30);
+      doc.fillColor("#1e293b").font("Helvetica").fontSize(9.5)
+        .text(clause, 62, y, { width: contentWidth - 24 });
+      y += doc.heightOfString(clause, { width: contentWidth - 24 }) + 8;
+    });
+
+    // Signatures
+    y += 20;
+    ensureSpace(120);
+    doc.roundedRect(50, y, contentWidth, 20, 5).fill("#1d4ed8");
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(10).text("SIGNATURES", 62, y + 5);
+    y += 28;
+
+    const sigW = (contentWidth - 14) / 2;
+    doc.rect(50, y + 50, sigW - 20, 1).stroke("#374151");
+    doc.fillColor("#374151").font("Helvetica").fontSize(9)
+      .text("Landlord Signature", 50, y + 56)
+      .text(lease.owner?.name || "-", 50, y + 68);
+    doc.rect(50 + sigW + 14, y + 50, sigW - 20, 1).stroke("#374151");
+    doc.fillColor("#374151").font("Helvetica").fontSize(9)
+      .text("Tenant Signature", 50 + sigW + 14, y + 56)
+      .text(lease.tenant?.name || "-", 50 + sigW + 14, y + 68);
+    y += 90;
+
+    doc.fillColor("#94a3b8").font("Helvetica").fontSize(8)
+      .text("This is a computer-generated document. Digital signatures pending. For legal enforceability, please sign physically or via Aadhaar eSign.", 50, y, { width: contentWidth, align: "center" });
+
+    doc.end();
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getDaySuffix = (day) => {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: Property Rating & Review System
+// ─────────────────────────────────────────────────────────────────────────────
+
+const submitPropertyReview = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const { propertyId, overallRating, maintenanceRating, locationRating, valueRating, title, comment, pros, cons } = req.body;
+
+    if (!propertyId) return res.status(StatusCodes.BAD_REQUEST).json({ message: "propertyId is required." });
+    if (!overallRating || !maintenanceRating || !locationRating || !valueRating) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "All four ratings are required." });
+    }
+
+    const property = await Property.findById(propertyId);
+    if (!property) return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
+
+    // Allow only tenants who have had (or have active) a lease on this property
+    const lease = await Lease.findOne({ property: propertyId, tenant: tenantId });
+    if (!lease) return res.status(StatusCodes.FORBIDDEN).json({ message: "You can only review a property you have/had a lease for." });
+
+    const existing = await PropertyReview.findOne({ property: propertyId, tenant: tenantId });
+    if (existing) return res.status(StatusCodes.CONFLICT).json({ message: "You have already reviewed this property." });
+
+    const review = await PropertyReview.create({
+      property: propertyId,
+      tenant: tenantId,
+      owner: property.owner,
+      overallRating: Number(overallRating),
+      maintenanceRating: Number(maintenanceRating),
+      locationRating: Number(locationRating),
+      valueRating: Number(valueRating),
+      title: (title || "").trim(),
+      comment: (comment || "").trim(),
+      pros: (pros || "").trim(),
+      cons: (cons || "").trim(),
+    });
+
+    await createNotification({
+      recipient: property.owner,
+      role: "owner",
+      title: "New property review",
+      message: `${req.user.name || "A tenant"} left a ${overallRating}-star review for your property in ${property.address?.city || "your listing"}.`,
+      type: "system",
+      actionPath: "/owner/reviews",
+      senderName: req.user.name || req.user.email,
+    });
+
+    await review.populate("tenant", "name");
+    res.status(StatusCodes.CREATED).json({ message: "Review submitted.", review });
+  } catch (err) {
+    if (err.code === 11000) return res.status(StatusCodes.CONFLICT).json({ message: "You have already reviewed this property." });
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getPropertyReviews = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const reviews = await PropertyReview.find({ property: propertyId, isPublic: true })
+      .populate("tenant", "name")
+      .sort({ createdAt: -1 });
+
+    const avgRating = reviews.length
+      ? (reviews.reduce((s, r) => s + r.overallRating, 0) / reviews.length).toFixed(1)
+      : null;
+
+    res.status(StatusCodes.OK).json({ reviews, avgRating, totalReviews: reviews.length });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getOwnerPropertyReviews = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const reviews = await PropertyReview.find({ owner: ownerId })
+      .populate("property", "propertyType address")
+      .populate("tenant", "name email")
+      .sort({ createdAt: -1 });
+
+    // Aggregate per property
+    const byProperty = {};
+    reviews.forEach((r) => {
+      const pid = String(r.property?._id);
+      if (!byProperty[pid]) {
+        byProperty[pid] = {
+          property: r.property,
+          reviews: [],
+          totalOverall: 0,
+        };
+      }
+      byProperty[pid].reviews.push(r);
+      byProperty[pid].totalOverall += r.overallRating;
+    });
+
+    const propertySummaries = Object.values(byProperty).map((p) => ({
+      property: p.property,
+      reviewCount: p.reviews.length,
+      avgOverallRating: (p.totalOverall / p.reviews.length).toFixed(1),
+    }));
+
+    res.status(StatusCodes.OK).json({ reviews, propertySummaries, totalReviews: reviews.length });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const replyToReview = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const { reply } = req.body;
+    if (!reply || !reply.trim()) return res.status(StatusCodes.BAD_REQUEST).json({ message: "Reply text is required." });
+
+    const review = await PropertyReview.findOne({ _id: req.params.id, owner: ownerId });
+    if (!review) return res.status(StatusCodes.NOT_FOUND).json({ message: "Review not found." });
+
+    review.ownerReply = reply.trim();
+    review.ownerRepliedAt = new Date();
+    await review.save();
+
+    res.status(StatusCodes.OK).json({ message: "Reply saved.", review });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getTenantReviews = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const reviews = await PropertyReview.find({ tenant: tenantId })
+      .populate("property", "propertyType address")
+      .sort({ createdAt: -1 });
+    res.status(StatusCodes.OK).json({ reviews });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const deleteReview = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const review = await PropertyReview.findOneAndDelete({ _id: req.params.id, tenant: tenantId });
+    if (!review) return res.status(StatusCodes.NOT_FOUND).json({ message: "Review not found." });
+    res.status(StatusCodes.OK).json({ message: "Review deleted." });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: Razorpay Payment Gateway Integration
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getRazorpayInstance = () => {
+  const Razorpay = require("razorpay");
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error("Razorpay keys are not configured.");
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
+};
+
+// POST /tenant/rent/:id/create-payment-order
+const createRazorpayOrder = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const rent = await RentPayment.findOne({ _id: req.params.id, tenant: tenantId });
+    if (!rent) return res.status(StatusCodes.NOT_FOUND).json({ message: "Rent record not found." });
+    if (rent.status === "Paid") return res.status(StatusCodes.BAD_REQUEST).json({ message: "Rent is already paid." });
+
+    const instance = getRazorpayInstance();
+    const amountPaise = Math.round(Number(rent.totalAmount || rent.amount || 0) * 100); // Razorpay uses paise
+    if (amountPaise <= 0) return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid rent amount." });
+
+    const order = await instance.orders.create({
+      amount: amountPaise,
+      currency: "INR",
+      receipt: `rent_${rent._id}_${Date.now()}`,
+      notes: {
+        rentId: rent._id.toString(),
+        tenantId,
+        month: rent.month,
+        year: String(rent.year),
+      },
+    });
+
+    // Save orderId for later verification
+    await RentPayment.findByIdAndUpdate(rent._id, { razorpayOrderId: order.id });
+
+    res.status(StatusCodes.OK).json({
+      orderId: order.id,
+      amount: amountPaise,
+      currency: "INR",
+      keyId: process.env.RAZORPAY_KEY_ID,
+      rentId: rent._id,
+      month: rent.month,
+      year: rent.year,
+    });
+  } catch (err) {
+    if (err.message === "Razorpay keys are not configured.") {
+      return res.status(StatusCodes.SERVICE_UNAVAILABLE).json({ message: "Online payment is not enabled. Please pay manually." });
+    }
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+// POST /tenant/rent/:id/verify-payment
+const verifyRazorpayPayment = async (req, res) => {
+  try {
+    const crypto = require("crypto");
+    const tenantId = req.user.userId;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Missing payment verification fields." });
+    }
+
+    const rent = await RentPayment.findOne({ _id: req.params.id, tenant: tenantId })
+      .populate("property", "propertyType address")
+      .populate("tenant", "name email");
+    if (!rent) return res.status(StatusCodes.NOT_FOUND).json({ message: "Rent record not found." });
+
+    // Verify Razorpay signature
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keySecret) return res.status(StatusCodes.SERVICE_UNAVAILABLE).json({ message: "Online payment is not enabled." });
+
+    const generatedSignature = crypto
+      .createHmac("sha256", keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Payment verification failed. Invalid signature." });
+    }
+
+    // Mark rent as paid automatically (online payment = instant verification)
+    const paidNow = new Date();
+    const receiptNumber = rent.receiptNumber || `RCPT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const totalAmount = Number((Number(rent.amount || 0) + Number(rent.lateFeeAmount || 0)).toFixed(2));
+
+    const updatedRent = await RentPayment.findByIdAndUpdate(
+      rent._id,
+      {
+        status: "Paid",
+        paidDate: paidNow,
+        receiptNumber,
+        totalAmount,
+        paymentMethod: "online",
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id,
+        razorpaySignature: razorpay_signature,
+        paymentSubmission: {
+          status: "Verified",
+          transactionId: razorpay_payment_id,
+          paidAt: paidNow,
+          submittedAt: paidNow,
+          notes: "Paid via Razorpay online payment gateway",
+        },
+      },
+      { new: true }
+    ).populate("property", "propertyType address").populate("tenant", "name email");
+
+    // Notify tenant
+    await createNotification({
+      recipient: rent.tenant?._id,
+      role: "tenant",
+      title: "Rent payment successful",
+      message: `Your ${rent.month} ${rent.year} rent payment of ${formatCurrency(totalAmount)} was received via online payment.`,
+      type: "rent",
+      actionPath: "/tenant/rent",
+      metadata: { rentId: rent._id, receiptNumber, paymentId: razorpay_payment_id },
+    });
+
+    // Notify owner
+    await createNotification({
+      recipient: rent.owner,
+      role: "owner",
+      title: "Online rent payment received",
+      message: `${rent.tenant?.name || "Tenant"} paid ${formatCurrency(totalAmount)} for ${rent.month} ${rent.year} via Razorpay.`,
+      type: "rent",
+      actionPath: "/owner/rent",
+      metadata: { rentId: rent._id, receiptNumber, paymentId: razorpay_payment_id },
+    });
+
+    res.status(StatusCodes.OK).json({
+      message: "Payment verified. Rent marked as paid.",
+      rent: updatedRent,
+      receiptNumber,
+    });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 module.exports = {
   // Auth
   signUp,
@@ -3193,4 +4123,24 @@ module.exports = {
   markNotificationRead,
   // Features Document
   generateFeaturesDocument,
+  // Expenses
+  addExpense,
+  getOwnerExpenses,
+  updateExpense,
+  deleteExpense,
+  // Advanced Analytics & Tax
+  getAdvancedAnalytics,
+  downloadTaxReport,
+  // Rent Agreement
+  downloadRentAgreement,
+  // Reviews
+  submitPropertyReview,
+  getPropertyReviews,
+  getOwnerPropertyReviews,
+  replyToReview,
+  getTenantReviews,
+  deleteReview,
+  // Razorpay Payment Gateway
+  createRazorpayOrder,
+  verifyRazorpayPayment,
 };

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Building2, Home, MapPin, Search, SlidersHorizontal, Menu, X } from "lucide-react";
 import api from "../utils/api";
 import toast from "react-hot-toast";
+import { PropertyImageCarousel } from "../components/UI";
 
 const getStoredUser = () => {
   try {
@@ -225,8 +226,13 @@ const BrowseProperties = () => {
               <div className="mb-4 text-sm text-gray-500">Showing {filteredProperties.length} vacant properties</div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {filteredProperties.map((property) => (
-                  <div key={property._id} className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
-                    <img src={propertyImage(property.propertyType)} alt={property.propertyType} className="w-full h-48 object-cover" />
+                  <div key={property._id} className="group rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
+                    <PropertyImageCarousel
+                      photoUrls={property.photoUrls || []}
+                      propertyType={property.propertyType}
+                      apiOrigin={(import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "")}
+                      height="h-48"
+                    />
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-3">
                         <div>

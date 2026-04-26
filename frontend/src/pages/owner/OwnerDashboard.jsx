@@ -21,6 +21,12 @@ import {
   RefreshCcw,
   ShieldCheck,
   Bell,
+  Receipt,
+  BarChart2,
+  Star,
+  FileText,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 import api from "../../utils/api";
 import { formatCurrency } from "../../utils/currency";
@@ -261,9 +267,59 @@ const OwnerDashboard = () => {
     { title: "Properties", subtitle: "Manage listings, unit details, and availability", icon: Building2, onClick: () => navigate("/owner/properties"), accent: "blue" },
     { title: "Tenants & Leases", subtitle: "Review active leases and tenant lifecycle", icon: Users, onClick: () => navigate("/owner/tenants"), accent: "green" },
     { title: "Rent Management", subtitle: "Track pending, paid, and overdue rent cycles", icon: Wallet, onClick: () => navigate("/owner/rent"), accent: "amber" },
+    { title: "Expense Tracker", subtitle: "Log repairs, bills, and property-level costs", icon: Receipt, onClick: () => navigate("/owner/expenses"), accent: "blue" },
+    { title: "Advanced Analytics", subtitle: "See income vs expense trends and tax insights", icon: BarChart2, onClick: () => navigate("/owner/analytics"), accent: "violet" },
+    { title: "Property Reviews", subtitle: "Understand tenant feedback and improve retention", icon: Star, onClick: () => navigate("/owner/reviews"), accent: "rose" },
     { title: "Vacancies", subtitle: "Promote vacant inventory and fill empty units", icon: MapPin, onClick: () => navigate("/owner/vacancies"), accent: "violet" },
     { title: "Maintenance", subtitle: "Handle service requests and urgent issues", icon: Wrench, onClick: () => navigate("/owner/maintenance"), accent: "rose" },
     { title: "Notifications", subtitle: "Check recent updates and platform activity", icon: Bell, onClick: () => navigate("/owner/notifications"), accent: "slate" },
+  ];
+
+  const featureStudioItems = [
+    {
+      title: "Expense Intelligence",
+      subtitle: "Control spending by property and protect rental margins.",
+      statLabel: "Paid Collection",
+      statValue: formatCurrency(paidRent),
+      icon: Receipt,
+      accent: "from-blue-500 to-cyan-500",
+      border: "border-blue-100",
+      bg: "from-blue-50 to-cyan-50",
+      onClick: () => navigate("/owner/expenses"),
+    },
+    {
+      title: "Analytics & Tax Reports",
+      subtitle: "Track monthly performance and prepare ITR-ready insights.",
+      statLabel: "Overdue Exposure",
+      statValue: formatCurrency(overdueRent),
+      icon: BarChart2,
+      accent: "from-violet-500 to-purple-500",
+      border: "border-violet-100",
+      bg: "from-violet-50 to-purple-50",
+      onClick: () => navigate("/owner/analytics"),
+    },
+    {
+      title: "Digital Agreements",
+      subtitle: "Generate and download rent agreement PDFs from leases.",
+      statLabel: "Active Leases",
+      statValue: `${activeLeases}`,
+      icon: FileText,
+      accent: "from-emerald-500 to-teal-500",
+      border: "border-emerald-100",
+      bg: "from-emerald-50 to-teal-50",
+      onClick: () => navigate("/owner/tenants"),
+    },
+    {
+      title: "Tenant Reviews",
+      subtitle: "See what tenants liked and where experience can improve.",
+      statLabel: "New Inquiries",
+      statValue: `${newInquiries}`,
+      icon: Star,
+      accent: "from-amber-500 to-orange-500",
+      border: "border-amber-100",
+      bg: "from-amber-50 to-orange-50",
+      onClick: () => navigate("/owner/reviews"),
+    },
   ];
 
   return (
@@ -379,6 +435,47 @@ const OwnerDashboard = () => {
           <div className="space-y-6 rounded-[26px] bg-transparent p-3 sm:p-4">
             {activeSectionTab === "overview" && (
               <>
+                <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="inline-flex items-center gap-2 text-base font-bold text-gray-900"><Sparkles size={18} className="text-indigo-600" /> Feature Studio</h3>
+                    <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-indigo-700">New capabilities</span>
+                  </div>
+                  <p className="mb-5 text-sm text-gray-600">Access your newest tools in one place to improve profitability, reporting, tenant experience, and operational speed.</p>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {featureStudioItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.title}
+                          type="button"
+                          onClick={item.onClick}
+                          className={`group rounded-3xl border ${item.border} bg-gradient-to-br ${item.bg} p-4 text-left transition-all hover:-translate-y-1 hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)]`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-gray-900">{item.title}</p>
+                              <p className="mt-1 text-xs leading-5 text-gray-600">{item.subtitle}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-2xl bg-gradient-to-br ${item.accent} p-2.5 text-white shadow-md`}>
+                              <Icon size={16} />
+                            </span>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between">
+                            <div>
+                              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">{item.statLabel}</p>
+                              <p className="mt-1 text-lg font-extrabold text-gray-900">{item.statValue}</p>
+                            </div>
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700">
+                              Open <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
                   <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
                     <div className="mb-4 flex items-center justify-between">
@@ -406,6 +503,16 @@ const OwnerDashboard = () => {
                         <p className="mt-3 text-4xl font-extrabold text-rose-950">{openMaintenanceRequests}</p>
                         <p className="mt-2 text-xs font-medium text-rose-700">Maintenance requests still requiring action</p>
                       </div>
+                      <button type="button" onClick={() => navigate("/owner/expenses")} className="rounded-3xl border border-blue-100 bg-blue-50 p-5 text-left hover:-translate-y-0.5 transition-all">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-700">Expense Tracker</p>
+                        <p className="mt-3 text-sm font-bold text-blue-800">Track property expenses & net income</p>
+                        <p className="mt-2 text-xs font-medium text-blue-600">Go to Expense Tracker →</p>
+                      </button>
+                      <button type="button" onClick={() => navigate("/owner/analytics")} className="rounded-3xl border border-purple-100 bg-purple-50 p-5 text-left hover:-translate-y-0.5 transition-all">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-purple-700">Tax Report</p>
+                        <p className="mt-3 text-sm font-bold text-purple-800">Annual income statement & ITR PDF</p>
+                        <p className="mt-2 text-xs font-medium text-purple-600">Go to Analytics →</p>
+                      </button>
                     </div>
                   </section>
 

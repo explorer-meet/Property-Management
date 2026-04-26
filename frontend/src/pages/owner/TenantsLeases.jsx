@@ -193,6 +193,23 @@ const TenantsLeases = () => {
     }
   };
 
+  const downloadAgreement = async (leaseId) => {
+    try {
+      const response = await api.get(`/leases/${leaseId}/rent-agreement`, { responseType: "blob" });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `rent-agreement-${leaseId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Unable to download agreement.");
+    }
+  };
+
   const totalMonthlyRent = leases.reduce((sum, l) => sum + Number(l.rentAmount || 0), 0);
   const expiringSoon = leases.filter((l) => {
     const end = new Date(l.leaseEndDate).getTime();
@@ -791,6 +808,9 @@ const TenantsLeases = () => {
                   </button>
                   <button onClick={() => openViewDocsModal(l)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
                     <FileText size={14} /> View Docs
+                  </button>
+                  <button onClick={() => downloadAgreement(l._id)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
+                    <Download size={14} /> Agreement
                   </button>
                   <button onClick={() => openEditLease(l)} className="btn-secondary flex items-center gap-1.5 text-sm py-1.5 px-3">
                     <Pencil size={14} /> Edit

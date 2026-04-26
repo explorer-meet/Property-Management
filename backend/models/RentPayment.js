@@ -49,6 +49,11 @@ const rentPaymentSchema = new mongoose.Schema(
     notes: { type: String, trim: true },
     paymentInstructions: { type: paymentInstructionsSchema, default: () => ({}) },
     paymentSubmission: { type: paymentSubmissionSchema, default: () => ({ status: "NotSubmitted" }) },
+    // Razorpay online payment fields
+    razorpayOrderId:   { type: String, trim: true },
+    razorpayPaymentId: { type: String, trim: true },
+    razorpaySignature: { type: String, trim: true },
+    paymentMethod:     { type: String, enum: ["manual", "online"], default: "manual" },
   },
   { timestamps: true }
 );

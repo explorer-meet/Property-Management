@@ -10,6 +10,7 @@ import {
   ReceiptText,
   CalendarDays,
   Download,
+  Zap,
 } from "lucide-react";
 import { PageHeader, Modal, StatusBadge, EmptyState } from "../../components/UI";
 import api from "../../utils/api";
@@ -293,7 +294,16 @@ const RentManagement = () => {
                       {new Date(r.dueDate).toLocaleDateString()}
                     </span>
                   </td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      <StatusBadge status={r.status} />
+                      {r.paymentMethod === "online" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 w-fit">
+                          <Zap size={9} /> Razorpay
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1.5">
                       {r.status !== "Paid" && (

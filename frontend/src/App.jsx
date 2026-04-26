@@ -32,12 +32,16 @@ import OwnerPaymentDetails from "./pages/owner/OwnerPaymentDetails";
 import Maintenance from "./pages/owner/Maintenance";
 import Vacancies from "./pages/owner/Vacancies";
 import OwnerInquiries from "./pages/owner/OwnerInquiries";
+import Expenses from "./pages/owner/Expenses";
+import AdvancedAnalytics from "./pages/owner/AdvancedAnalytics";
+import PropertyReviews from "./pages/owner/PropertyReviews";
 
 // Tenant
 import TenantDashboard from "./pages/tenant/TenantDashboard";
 import TenantRent from "./pages/tenant/TenantRent";
 import TenantMaintenance from "./pages/tenant/TenantMaintenance";
 import TenantInquiries from "./pages/tenant/TenantInquiries";
+import TenantReview from "./pages/tenant/TenantReview";
 
 function App() {
   return (
@@ -108,6 +112,9 @@ function App() {
             <Route path="maintenance" element={<Maintenance />} />
             <Route path="inquiries" element={<OwnerInquiries />} />
             <Route path="vacancies" element={<Vacancies />} />
+            <Route path="expenses" element={<Expenses />} />
+            <Route path="analytics" element={<AdvancedAnalytics />} />
+            <Route path="reviews" element={<PropertyReviews />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
           </Route>
@@ -126,6 +133,7 @@ function App() {
             <Route path="rent" element={<TenantRent />} />
             <Route path="maintenance" element={<TenantMaintenance />} />
             <Route path="inquiries" element={<TenantInquiries />} />
+            <Route path="reviews" element={<TenantReview />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
           </Route>

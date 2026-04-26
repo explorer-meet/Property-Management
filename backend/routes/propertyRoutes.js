@@ -28,6 +28,13 @@ const {
   deleteOwnerPaymentDetails,
   uploadOwnerPaymentQrCode,
   generateFeaturesDocument,
+  createRazorpayOrder,
+  verifyRazorpayPayment,
+  // New features
+  addExpense, getOwnerExpenses, updateExpense, deleteExpense,
+  getAdvancedAnalytics, downloadTaxReport,
+  downloadRentAgreement,
+  submitPropertyReview, getPropertyReviews, getOwnerPropertyReviews, replyToReview, getTenantReviews, deleteReview,
 } = require("../controllers/propertyController");
 
 // ── Auth ──────────────────────────────────────
@@ -124,6 +131,8 @@ router.get("/tenant/dashboard", verifyToken, requireTenant, getTenantDashboard);
 router.get("/tenant/lease", verifyToken, requireTenant, getTenantLease);
 router.get("/tenant/rent-history", verifyToken, requireTenant, getTenantRentHistory);
 router.post("/tenant/rent/:id/submit-payment", verifyToken, requireTenant, submitTenantRentPayment);
+router.post("/tenant/rent/:id/create-payment-order", verifyToken, requireTenant, createRazorpayOrder);
+router.post("/tenant/rent/:id/verify-payment", verifyToken, requireTenant, verifyRazorpayPayment);
 router.get("/tenant/owner-payment-details", verifyToken, requireTenant, getTenantOwnerPaymentDetails);
 router.get("/tenant/inquiries", verifyToken, requireTenant, getTenantInquiries);
 router.patch("/tenant/inquiries/:id/request-revisit", verifyToken, requireTenant, requestTenantRevisit);
@@ -157,5 +166,26 @@ router.post(
 // ── Notifications ────────────────────────────
 router.get("/notifications", verifyToken, getNotifications);
 router.patch("/notifications/:id/read", verifyToken, markNotificationRead);
+
+// ── Owner – Expenses ──────────────────────────
+router.post("/owner/expenses", verifyToken, requireOwner, addExpense);
+router.get("/owner/expenses", verifyToken, requireOwner, getOwnerExpenses);
+router.put("/owner/expenses/:id", verifyToken, requireOwner, updateExpense);
+router.delete("/owner/expenses/:id", verifyToken, requireOwner, deleteExpense);
+
+// ── Owner – Advanced Analytics & Tax Report ───
+router.get("/owner/advanced-analytics", verifyToken, requireOwner, getAdvancedAnalytics);
+router.get("/owner/tax-report/download", verifyToken, requireOwner, downloadTaxReport);
+
+// ── Rent Agreement ────────────────────────────
+router.get("/leases/:leaseId/rent-agreement", verifyToken, downloadRentAgreement);
+
+// ── Reviews ───────────────────────────────────
+router.post("/tenant/reviews", verifyToken, requireTenant, submitPropertyReview);
+router.get("/tenant/reviews", verifyToken, requireTenant, getTenantReviews);
+router.delete("/tenant/reviews/:id", verifyToken, requireTenant, deleteReview);
+router.get("/owner/reviews", verifyToken, requireOwner, getOwnerPropertyReviews);
+router.patch("/owner/reviews/:id/reply", verifyToken, requireOwner, replyToReview);
+router.get("/properties/:propertyId/reviews", getPropertyReviews);
 
 module.exports = router;
