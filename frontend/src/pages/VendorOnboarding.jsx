@@ -80,29 +80,29 @@ const VendorOnboarding = () => {
       </nav>
 
       {/* ── Hero Section ──────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 py-16 lg:py-20">
+      <section className="relative overflow-hidden bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 py-12 lg:py-16">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full bg-white/5" />
           <div className="absolute -bottom-16 -left-16 w-72 h-72 rounded-full bg-white/5" />
           <div className="absolute top-1/3 left-1/2 w-40 h-40 rounded-full bg-indigo-400/10" />
         </div>
         <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-xs font-semibold text-indigo-200 uppercase tracking-wider mb-5">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/20 px-3.5 py-1 text-[11px] font-semibold text-indigo-200 uppercase tracking-wider mb-4">
             <BriefcaseBusiness size={12} /> Vendor Partnership Program
           </span>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white leading-tight">
             Grow Your Service Business<br className="hidden sm:block" />
             <span className="text-indigo-300"> with PropManager</span>
           </h1>
-          <p className="mt-5 text-base text-blue-200 max-w-2xl mx-auto leading-relaxed">
+          <p className="mt-4 text-sm sm:text-base text-blue-200 max-w-xl mx-auto leading-relaxed">
             Join our trusted vendor network and get consistent maintenance service opportunities from property owners across your city.
           </p>
           {/* Stats row */}
-          <div className="mt-10 inline-flex flex-wrap justify-center gap-4 sm:gap-8">
+          <div className="mt-7 inline-flex flex-wrap justify-center gap-4 sm:gap-6">
             {STATS.map(({ value, label }) => (
               <div key={label} className="text-center">
-                <p className="text-2xl font-extrabold text-white">{value}</p>
-                <p className="text-xs text-indigo-300 mt-0.5 font-medium">{label}</p>
+                <p className="text-xl sm:text-2xl font-extrabold text-white">{value}</p>
+                <p className="text-[11px] sm:text-xs text-indigo-300 mt-0.5 font-medium">{label}</p>
               </div>
             ))}
           </div>
@@ -209,7 +209,7 @@ const VendorOnboarding = () => {
                           <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                           <input
                             required
-                            className="input-field pl-8"
+                            className="input-field !pl-9"
                             placeholder="e.g. ABC Electricals"
                             value={form.companyName}
                             onChange={(e) => setForm((prev) => ({ ...prev, companyName: e.target.value }))}
@@ -222,7 +222,7 @@ const VendorOnboarding = () => {
                           <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                           <input
                             required
-                            className="input-field pl-8"
+                            className="input-field !pl-9"
                             placeholder="Full name"
                             value={form.contactName}
                             onChange={(e) => setForm((prev) => ({ ...prev, contactName: e.target.value }))}
@@ -243,7 +243,7 @@ const VendorOnboarding = () => {
                           <input
                             required
                             type="email"
-                            className="input-field pl-8"
+                            className="input-field !pl-9"
                             placeholder="you@company.com"
                             value={form.email}
                             onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
@@ -256,7 +256,7 @@ const VendorOnboarding = () => {
                           <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                           <input
                             required
-                            className="input-field pl-8"
+                            className="input-field !pl-9"
                             placeholder="10-digit mobile"
                             value={form.phone}
                             onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
@@ -269,7 +269,7 @@ const VendorOnboarding = () => {
                       <div className="relative">
                         <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
-                          className="input-field pl-8"
+                          className="input-field !pl-9"
                           placeholder="Operating city"
                           value={form.city}
                           onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))}

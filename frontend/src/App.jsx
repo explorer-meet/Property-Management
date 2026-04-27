@@ -46,6 +46,7 @@ import PropertyReviews from "./pages/owner/PropertyReviews";
 
 // Tenant
 import TenantDashboard from "./pages/tenant/TenantDashboard";
+import TenantLeases from "./pages/tenant/TenantLeases";
 import TenantRent from "./pages/tenant/TenantRent";
 import TenantMaintenance from "./pages/tenant/TenantMaintenance";
 import TenantInquiries from "./pages/tenant/TenantInquiries";
@@ -151,6 +152,7 @@ function App() {
           >
             <Route index element={<Navigate to="/tenant/dashboard" replace />} />
             <Route path="dashboard" element={<TenantDashboard />} />
+            <Route path="leases" element={<TenantLeases />} />
             <Route path="rent" element={<TenantRent />} />
             <Route path="maintenance" element={<TenantMaintenance />} />
             <Route path="inquiries" element={<TenantInquiries />} />

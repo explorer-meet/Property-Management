@@ -14,6 +14,11 @@ const userSchema = new mongoose.Schema(
     profilePictureUrl: { type: String, trim: true, default: "" },
     role: { type: String, enum: ["owner", "tenant", "vendor"], required: true },
     isActive: { type: Boolean, default: true },
+    lifecycleStatus: {
+      type: String,
+      enum: ["Active", "Inactive", "Archived", "Deleted"],
+      default: "Active",
+    },
     paymentDetails: {
       accountHolderName: { type: String, trim: true, default: "" },
       bankName: { type: String, trim: true, default: "" },

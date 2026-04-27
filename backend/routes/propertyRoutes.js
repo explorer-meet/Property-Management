@@ -12,9 +12,9 @@ const {
   getVacantProperties, updatePropertyStatus,
   getOwnerMaintenanceRequests, updateMaintenanceStatus, addCommentToRequest,
   getOwnerVendors, assignVendorToMaintenanceRequest, decideVendorQuote, completeVendorPayment,
-  getAdminVendors, createAdminVendor, updateAdminVendor, deleteAdminVendor, getAdminVendorLeads, updateAdminVendorLeadStatus, getAdminStats, getAdminEntityList,
+  getAdminVendors, createAdminVendor, updateAdminVendor, deleteAdminVendor, getAdminVendorLeads, updateAdminVendorLeadStatus, getAdminStats, getAdminEntityList, updateAdminEntityStatus,
   getOwnerDashboard, getOwnerAnalytics, exportOwnerAnalyticsCsv,
-  getTenantDashboard, getTenantLease, getTenantRentHistory, submitTenantRentPayment, getTenantOwnerPaymentDetails, getTenantInquiries, requestTenantRevisit,
+  getTenantDashboard, getTenantLeases, getTenantLease, getTenantRentHistory, submitTenantRentPayment, getTenantOwnerPaymentDetails, getTenantInquiries, requestTenantRevisit,
   createMaintenanceRequest, getTenantMaintenanceRequests,
   createMoveOutRequest, getTenantMoveOutRequests,
   getOwnerMoveOutRequests, decideMoveOutRequest, completeMoveOutRequest,
@@ -36,7 +36,7 @@ const {
   addExpense, getOwnerExpenses, updateExpense, deleteExpense,
   getAdvancedAnalytics, downloadTaxReport,
   downloadRentAgreement,
-  submitPropertyReview, getPropertyReviews, getOwnerPropertyReviews, replyToReview, getTenantReviews, deleteReview,
+  submitPropertyReview, getPropertyReviews, getOwnerPropertyReviews, replyToReview, getTenantReviews, deleteReview, updatePropertyReview,
   // Vendor Portal
   getVendorProfile, updateVendorProfile, getVendorMaintenanceRequests, submitVendorQuote, uploadVendorWorkPhotos, markVendorWorkComplete, raiseVendorPaymentRequest,
 } = require("../controllers/propertyController");
@@ -137,6 +137,7 @@ router.get("/owner/vendors", verifyToken, requireOwner, getOwnerVendors);
 // ── Admin – Vendor Directory & Leads ──────────
 router.get("/admin/stats", verifyToken, requireAdmin, getAdminStats);
 router.get("/admin/insights", verifyToken, requireAdmin, getAdminEntityList);
+router.patch("/admin/entities/:type/:id/status", verifyToken, requireAdmin, updateAdminEntityStatus);
 router.get("/admin/vendors", verifyToken, requireAdmin, getAdminVendors);
 router.post("/admin/vendors", verifyToken, requireAdmin, createAdminVendor);
 router.put("/admin/vendors/:id", verifyToken, requireAdmin, updateAdminVendor);
@@ -164,6 +165,7 @@ router.post(
 router.get("/tenant/dashboard", verifyToken, requireTenant, getTenantDashboard);
 
 // ── Tenant – Lease & Rent ─────────────────────
+router.get("/tenant/leases", verifyToken, requireTenant, getTenantLeases);
 router.get("/tenant/lease", verifyToken, requireTenant, getTenantLease);
 router.get("/tenant/rent-history", verifyToken, requireTenant, getTenantRentHistory);
 router.post("/tenant/rent/:id/submit-payment", verifyToken, requireTenant, submitTenantRentPayment);
@@ -218,6 +220,7 @@ router.get("/leases/:leaseId/rent-agreement", verifyToken, downloadRentAgreement
 
 // ── Reviews ───────────────────────────────────
 router.post("/tenant/reviews", verifyToken, requireTenant, submitPropertyReview);
+router.patch("/tenant/reviews/:id", verifyToken, requireTenant, updatePropertyReview);
 router.get("/tenant/reviews", verifyToken, requireTenant, getTenantReviews);
 router.delete("/tenant/reviews/:id", verifyToken, requireTenant, deleteReview);
 router.get("/owner/reviews", verifyToken, requireOwner, getOwnerPropertyReviews);

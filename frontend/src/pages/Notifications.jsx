@@ -84,6 +84,8 @@ const Notifications = () => {
     }
   };
 
+
+
   const uniqueTenants = useMemo(() => {
     const names = notifications.map((n) => n.senderName).filter(Boolean);
     return [...new Set(names)].sort();
@@ -240,15 +242,17 @@ const Notifications = () => {
                         <p className="text-sm text-gray-600">{item.message}</p>
                         <p className="text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</p>
                       </div>
-                      {!item.isRead ? (
-                        <button
-                          type="button"
-                          onClick={() => markRead(item._id)}
-                          className="flex-shrink-0 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                        >
-                          <CheckCircle2 size={12} /> Mark Read
-                        </button>
-                      ) : null}
+                      <div className="flex gap-2 flex-wrap flex-shrink-0">
+                        {!item.isRead ? (
+                          <button
+                            type="button"
+                            onClick={() => markRead(item._id)}
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                          >
+                            <CheckCircle2 size={12} /> Mark Read
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>

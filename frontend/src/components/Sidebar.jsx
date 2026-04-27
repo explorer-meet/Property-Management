@@ -62,6 +62,7 @@ const tenantLinks = [
   {
     section: "My Tenancy",
     items: [
+      { to: "/tenant/leases", label: "My Leases", icon: Home },
       { to: "/tenant/rent", label: "Rent & Payments", icon: DollarSign },
       { to: "/tenant/maintenance", label: "My Requests", icon: Wrench },
       { to: "/tenant/reviews", label: "My Reviews", icon: Star },
@@ -107,6 +108,7 @@ const Sidebar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState({});
   const [activeInquiryCount, setActiveInquiryCount] = useState(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -115,6 +117,14 @@ const Sidebar = () => {
       setActiveInquiryCount(count);
     }).catch(() => {});
   }, [isOwner]);
+
+  useEffect(() => {
+    if (!user) return;
+    api.get("/notifications").then(({ data }) => {
+      const count = (data?.notifications || []).filter((n) => !n.isRead).length;
+      setUnreadNotifCount(count);
+    }).catch(() => {});
+  }, [user]);
 
   // Auto-expand the section that contains the currently active route
   useEffect(() => {
@@ -319,6 +329,8 @@ const Sidebar = () => {
                       <span className="flex-1">{label}</span>
                       {isOwner && to === "/owner/inquiries" && activeInquiryCount > 0 ? (
                         <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">{activeInquiryCount}</span>
+                      ) : (to === "/owner/notifications" || to === "/tenant/notifications" || to === "/vendor/notifications") && unreadNotifCount > 0 ? (
+                        <span className="rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">{unreadNotifCount}</span>
                       ) : (
                         <ChevronRight size={14} className="opacity-40 transition-transform duration-200 group-hover:translate-x-0.5 flex-shrink-0" />
                       )}

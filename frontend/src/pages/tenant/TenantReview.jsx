@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Star, Send, Trash2, Building2, MessageSquare, ThumbsUp, ThumbsDown, CornerDownRight } from "lucide-react";
+import { Star, Send, Trash2, Building2, MessageSquare, ThumbsUp, ThumbsDown, CornerDownRight, Pencil } from "lucide-react";
 import { PageHeader, Modal, EmptyState, StatCard } from "../../components/UI";
 import api from "../../utils/api";
 import toast from "react-hot-toast";
@@ -36,6 +36,10 @@ export default function TenantReview() {
   const [form, setForm] = useState(BLANK_FORM);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editModal, setEditModal] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState(BLANK_FORM);
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -95,6 +99,43 @@ export default function TenantReview() {
 
   const setRating = (field) => (val) => setForm((f) => ({ ...f, [field]: val }));
 
+  const openEditModal = (review) => {
+    setEditTarget(review);
+    setEditForm({
+      overallRating: review.overallRating || 0,
+      maintenanceRating: review.maintenanceRating || 0,
+      locationRating: review.locationRating || 0,
+      valueRating: review.valueRating || 0,
+      title: review.title || "",
+      comment: review.comment || "",
+      pros: review.pros || "",
+      cons: review.cons || "",
+    });
+    setEditModal(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editTarget) return;
+    if (editForm.overallRating === 0 || editForm.maintenanceRating === 0 || editForm.locationRating === 0 || editForm.valueRating === 0) {
+      return toast.error("Please provide all four ratings.");
+    }
+    setEditSaving(true);
+    try {
+      await api.patch(`/tenant/reviews/${editTarget._id}`, editForm);
+      toast.success("Review updated successfully!");
+      setEditModal(false);
+      setEditTarget(null);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update review.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const setEditRating = (field) => (val) => setEditForm((f) => ({ ...f, [field]: val }));
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -151,10 +192,16 @@ export default function TenantReview() {
                     {new Date(review.createdAt).toLocaleDateString("en-IN")}
                   </p>
                 </div>
-                <button onClick={() => setDeleteConfirm(review._id)}
-                  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button onClick={() => openEditModal(review)}
+                    className="p-1.5 rounded-lg text-amber-500 bg-amber-50 hover:text-amber-700 hover:bg-amber-100 transition-colors" title="Edit review">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => setDeleteConfirm(review._id)}
+                    className="p-1.5 rounded-lg text-red-500 bg-red-50 hover:text-red-700 hover:bg-red-100 transition-colors" title="Delete review">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
               {/* Sub ratings */}
@@ -279,6 +326,78 @@ export default function TenantReview() {
           <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
           <button onClick={() => handleDelete(deleteConfirm)} className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold">Delete</button>
         </div>
+      </Modal>
+
+      {/* Edit Review Modal */}
+      <Modal isOpen={editModal} onClose={() => { setEditModal(false); setEditTarget(null); }} title="Edit Review">
+        {editTarget && (
+          <form onSubmit={handleEditSubmit} className="space-y-5">
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
+              Editing review for: <span className="font-semibold">
+                {editTarget.property?.propertyType} — {editTarget.property?.address?.city}
+              </span>
+            </div>
+
+            {/* Ratings */}
+            <div className="space-y-3">
+              {[
+                { label: "Overall Rating *", field: "overallRating" },
+                { label: "Maintenance Quality *", field: "maintenanceRating" },
+                { label: "Location *", field: "locationRating" },
+                { label: "Value for Money *", field: "valueRating" },
+              ].map(({ label, field }) => (
+                <div key={field} className="flex items-center justify-between">
+                  <label className="text-sm font-semibold text-gray-700">{label}</label>
+                  <StarPicker value={editForm[field]} onChange={setEditRating(field)} />
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Review Title</label>
+              <input type="text" maxLength={150} placeholder="Sum up your experience in one line" value={editForm.title}
+                onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Detailed Review</label>
+              <textarea rows={3} maxLength={1000} placeholder="Describe your overall experience living here…" value={editForm.comment}
+                onChange={(e) => setEditForm((f) => ({ ...f, comment: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                  <ThumbsUp size={13} className="text-green-600" /> Pros
+                </label>
+                <textarea rows={2} maxLength={500} placeholder="What did you like?" value={editForm.pros}
+                  onChange={(e) => setEditForm((f) => ({ ...f, pros: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 resize-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                  <ThumbsDown size={13} className="text-red-500" /> Cons
+                </label>
+                <textarea rows={2} maxLength={500} placeholder="What could be better?" value={editForm.cons}
+                  onChange={(e) => setEditForm((f) => ({ ...f, cons: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200 resize-none" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => { setEditModal(false); setEditTarget(null); }}
+                className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={editSaving}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50">
+                <Pencil size={14} /> {editSaving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

@@ -23,6 +23,11 @@ const propertySchema = new mongoose.Schema(
       default: "Vacant",
     },
     isActive: { type: Boolean, default: true },
+    lifecycleStatus: {
+      type: String,
+      enum: ["Active", "Inactive", "Archived", "Deleted"],
+      default: "Active",
+    },
   },
   { timestamps: true }
 );

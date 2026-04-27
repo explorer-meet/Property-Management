@@ -182,24 +182,31 @@ const hasPaymentInstructions = (instructions = {}) => {
   );
 };
 
-const getMissingVendorMaintenanceExpenses = async ({ ownerOid, fyStart, fyEnd }) => {
+const getMissingVendorMaintenanceExpenses = async ({ ownerOid, fyStart, fyEnd, persist = false }) => {
+  const dateScoped = fyStart && fyEnd;
+  const paidScope = dateScoped
+    ? {
+        $or: [
+          { "vendorPaymentRequest.paidAt": { $gte: fyStart, $lte: fyEnd } },
+          {
+            $and: [
+              {
+                $or: [
+                  { "vendorPaymentRequest.paidAt": { $exists: false } },
+                  { "vendorPaymentRequest.paidAt": null },
+                ],
+              },
+              { updatedAt: { $gte: fyStart, $lte: fyEnd } },
+            ],
+          },
+        ],
+      }
+    : {};
+
   const paidRequests = await MaintenanceRequest.find({
     owner: ownerOid,
     "vendorPaymentRequest.status": "Paid",
-    $or: [
-      { "vendorPaymentRequest.paidAt": { $gte: fyStart, $lte: fyEnd } },
-      {
-        $and: [
-          {
-            $or: [
-              { "vendorPaymentRequest.paidAt": { $exists: false } },
-              { "vendorPaymentRequest.paidAt": null },
-            ],
-          },
-          { updatedAt: { $gte: fyStart, $lte: fyEnd } },
-        ],
-      },
-    ],
+    ...paidScope,
   }).select("_id property category vendorQuote vendorPaymentRequest updatedAt");
 
   if (!paidRequests.length) {
@@ -228,14 +235,8 @@ const getMissingVendorMaintenanceExpenses = async ({ ownerOid, fyStart, fyEnd })
       : new Date(request.updatedAt);
     if (Number.isNaN(paidAt.getTime())) continue;
 
-    total += amount;
-    const month = paidAt.getMonth() + 1;
-    const year = paidAt.getFullYear();
-    const key = `${year}-${month}`;
-    monthlyMap[key] = (monthlyMap[key] || 0) + amount;
-
-    fallbackEntries.push({
-      maintenanceRequest: request._id,
+    const expensePayload = {
+      owner: ownerOid,
       property: request.property,
       category: "Maintenance",
       title: `Vendor maintenance - ${request.category}`,
@@ -243,7 +244,25 @@ const getMissingVendorMaintenanceExpenses = async ({ ownerOid, fyStart, fyEnd })
       date: paidAt,
       notes: "Derived from paid vendor maintenance request (fallback accounting).",
       source: "vendor-maintenance",
-    });
+      maintenanceRequest: request._id,
+    };
+
+    if (persist && expensePayload.property) {
+      try {
+        await Expense.create(expensePayload);
+        continue;
+      } catch (_) {
+        // Fall through to non-persisted fallback aggregation for visibility.
+      }
+    }
+
+    total += amount;
+    const month = paidAt.getMonth() + 1;
+    const year = paidAt.getFullYear();
+    const key = `${year}-${month}`;
+    monthlyMap[key] = (monthlyMap[key] || 0) + amount;
+
+    fallbackEntries.push(expensePayload);
   }
 
   const monthlyRows = Object.entries(monthlyMap)
@@ -1087,6 +1106,17 @@ const generateRentRecord = async (req, res) => {
       paymentInstructions: normalizedPaymentInstructions,
     });
 
+    // Notify tenant about new rent record
+    await createNotification({
+      recipient: lease.tenant?._id,
+      role: "tenant",
+      title: "New rent due",
+      message: `Rent of ${formatCurrency(lease.rentAmount)} for ${month} ${year} is now due. Due date: ${new Date(dueDate).toLocaleDateString()}`,
+      type: "rent",
+      actionPath: "/tenant/rent",
+      metadata: { rentId: rent._id, leaseId: leaseId },
+    });
+
     await sendMailEvent({
       to: lease.tenant?.email,
       subject: `Rent due reminder: ${month} ${year}`,
@@ -1864,15 +1894,16 @@ const updateAdminVendorLeadStatus = async (req, res) => {
 // ─────────────────────────────────────────────
 const getAdminStats = async (req, res) => {
   try {
-    const [totalOwners, totalTenants, totalProperties, totalVendors, totalLeads] = await Promise.all([
+    const [totalOwners, totalTenants, totalProperties, totalLeases, totalVendors, totalLeads] = await Promise.all([
       User.countDocuments({ role: "owner" }),
       User.countDocuments({ role: "tenant" }),
       Property.countDocuments({ isActive: true }),
+      Lease.countDocuments({}),
       Vendor.countDocuments({ managedByApp: true, isActive: true }),
       VendorLead.countDocuments({}),
     ]);
     const newLeads = await VendorLead.countDocuments({ status: "New" });
-    res.status(StatusCodes.OK).json({ totalOwners, totalTenants, totalProperties, totalVendors, totalLeads, newLeads });
+    res.status(StatusCodes.OK).json({ totalOwners, totalTenants, totalProperties, totalLeases, totalVendors, totalLeads, newLeads });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -1881,26 +1912,235 @@ const getAdminStats = async (req, res) => {
 const getAdminEntityList = async (req, res) => {
   try {
     const type = (req.query.type || "").toLowerCase();
+    const status = String(req.query.status || "all").toLowerCase();
+
+    const applyStatusFilter = (items = []) => {
+      if (status === "active") return items.filter((item) => item.isActive !== false);
+      if (status === "deactivated") return items.filter((item) => item.isActive === false);
+      return items;
+    };
 
     if (type === "owners" || type === "tenants") {
       const role = type === "owners" ? "owner" : "tenant";
       const users = await User.find({ role })
-        .select("name email role createdAt updatedAt")
+        .select("firstName middleName lastName name email phone countryCode role isActive lifecycleStatus profilePictureUrl createdAt updatedAt")
         .sort({ createdAt: -1 });
-      return res.status(StatusCodes.OK).json({ type, items: users });
+      const filteredUsers = applyStatusFilter(users);
+
+      const summary = {
+        total: users.length,
+        active: users.filter((item) => item.isActive).length,
+        deactivated: users.filter((item) => !item.isActive).length,
+      };
+
+      return res.status(StatusCodes.OK).json({ type, items: filteredUsers, summary });
     }
 
     if (type === "properties") {
-      const properties = await Property.find({ isActive: true })
-        .populate("owner", "name email")
-        .select("propertyType address status rentAmount createdAt updatedAt owner")
+      const properties = await Property.find({})
+        .populate("owner", "name email phone lifecycleStatus isActive")
+        .select("propertyType address description numberOfRooms photoUrls status isActive lifecycleStatus createdAt updatedAt owner")
         .sort({ createdAt: -1 });
-      return res.status(StatusCodes.OK).json({ type, items: properties });
+      const filteredProperties = applyStatusFilter(properties);
+
+      const summary = {
+        total: properties.length,
+        active: properties.filter((item) => item.isActive).length,
+        deactivated: properties.filter((item) => !item.isActive).length,
+      };
+
+      return res.status(StatusCodes.OK).json({ type, items: filteredProperties, summary });
+    }
+
+    if (type === "leases") {
+      const leases = await Lease.find({})
+        .populate("owner", "name email phone")
+        .populate("tenant", "name email phone")
+        .populate("property", "propertyType address status")
+        .select("owner tenant property leaseStartDate leaseEndDate rentAmount securityDeposit rentDueDay graceDays lateFeeType lateFeeValue isActive createdAt updatedAt")
+        .sort({ createdAt: -1 });
+      const filteredLeases = applyStatusFilter(leases);
+
+      const summary = {
+        total: leases.length,
+        active: leases.filter((item) => item.isActive).length,
+        deactivated: leases.filter((item) => !item.isActive).length,
+      };
+
+      return res.status(StatusCodes.OK).json({ type, items: filteredLeases, summary });
     }
 
     return res
       .status(StatusCodes.BAD_REQUEST)
-      .json({ message: "Invalid type. Use owners, tenants, or properties." });
+      .json({ message: "Invalid type. Use owners, tenants, properties, or leases." });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updateAdminEntityStatus = async (req, res) => {
+  try {
+    const type = String(req.params.type || "").toLowerCase();
+    const entityId = req.params.id;
+    const action = String(req.body?.action || "").toLowerCase();
+
+    const validActions = ["active", "deactivate", "delete"];
+    if (!validActions.includes(action)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid action. Use active, deactivate, or delete." });
+    }
+
+    const lifecycleStatusMap = {
+      active: "Active",
+      deactivate: "Inactive",
+    };
+
+    if (type === "owners" || type === "tenants") {
+      const expectedRole = type === "owners" ? "owner" : "tenant";
+
+      if (action === "delete") {
+        const user = await User.findOne({ _id: entityId, role: expectedRole }).select("_id role");
+        if (!user) {
+          return res.status(StatusCodes.NOT_FOUND).json({ message: `${expectedRole} not found.` });
+        }
+
+        if (expectedRole === "owner") {
+          const activeLeases = await Lease.find({ owner: entityId, isActive: true })
+            .populate("property", "propertyType address")
+            .select("_id property leaseStartDate leaseEndDate")
+            .limit(5);
+
+          if (activeLeases.length > 0) {
+            const leaseExamples = activeLeases
+              .map((lease) => {
+                const propertyType = lease.property?.propertyType || "Property";
+                const city = lease.property?.address?.city || "Unknown city";
+                return `${propertyType} (${city})`;
+              })
+              .join(", ");
+
+            return res.status(StatusCodes.CONFLICT).json({
+              message: `Owner cannot be deleted. ${activeLeases.length} active lease(s) found (${leaseExamples}). End or deactivate active leases first.`,
+            });
+          }
+        }
+
+        if (expectedRole === "tenant") {
+          const activeLeases = await Lease.find({ tenant: entityId, isActive: true })
+            .populate("property", "propertyType address")
+            .select("_id property leaseStartDate leaseEndDate")
+            .limit(5);
+
+          if (activeLeases.length > 0) {
+            const leaseExamples = activeLeases
+              .map((lease) => {
+                const propertyType = lease.property?.propertyType || "Property";
+                const city = lease.property?.address?.city || "Unknown city";
+                return `${propertyType} (${city})`;
+              })
+              .join(", ");
+
+            return res.status(StatusCodes.CONFLICT).json({
+              message: `Tenant cannot be deleted. ${activeLeases.length} active lease(s) found (${leaseExamples}). End or deactivate active leases first.`,
+            });
+          }
+        }
+
+        await User.deleteOne({ _id: entityId, role: expectedRole });
+        return res.status(StatusCodes.OK).json({
+          message: `${expectedRole} deleted from database.`,
+        });
+      }
+
+      const update = {
+        isActive: action === "active",
+        lifecycleStatus: lifecycleStatusMap[action] || "Inactive",
+      };
+
+      const user = await User.findOneAndUpdate(
+        { _id: entityId, role: expectedRole },
+        update,
+        { new: true }
+      ).select("name email role phone isActive lifecycleStatus createdAt updatedAt");
+
+      if (!user) {
+        return res.status(StatusCodes.NOT_FOUND).json({ message: `${expectedRole} not found.` });
+      }
+
+      return res.status(StatusCodes.OK).json({
+        message: `${expectedRole} marked as ${lifecycleStatusMap[action].toLowerCase()}.`,
+        item: user,
+      });
+    }
+
+    if (type === "properties") {
+      if (action === "delete") {
+        const deleted = await Property.findByIdAndDelete(entityId).select("_id propertyType");
+        if (!deleted) {
+          return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
+        }
+
+        return res.status(StatusCodes.OK).json({
+          message: "Property deleted from database.",
+          item: deleted,
+        });
+      }
+
+      const update = {
+        isActive: action === "active",
+        lifecycleStatus: lifecycleStatusMap[action] || "Inactive",
+      };
+
+      const property = await Property.findByIdAndUpdate(entityId, update, { new: true })
+        .populate("owner", "name email phone")
+        .select("propertyType address status isActive lifecycleStatus owner createdAt updatedAt");
+
+      if (!property) {
+        return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
+      }
+
+      return res.status(StatusCodes.OK).json({
+        message: `Property marked as ${lifecycleStatusMap[action].toLowerCase()}.`,
+        item: property,
+      });
+    }
+
+    if (type === "leases") {
+      if (action === "delete") {
+        const lease = await Lease.findById(entityId).select("_id isActive");
+        if (!lease) {
+          return res.status(StatusCodes.NOT_FOUND).json({ message: "Lease not found." });
+        }
+        if (lease.isActive) {
+          return res.status(StatusCodes.CONFLICT).json({ message: "Active lease cannot be deleted. Deactivate it first." });
+        }
+
+        await Lease.deleteOne({ _id: entityId });
+        return res.status(StatusCodes.OK).json({ message: "Lease deleted from database." });
+      }
+
+      const lease = await Lease.findByIdAndUpdate(
+        entityId,
+        { isActive: action === "active" },
+        { new: true }
+      )
+        .populate("owner", "name email phone")
+        .populate("tenant", "name email phone")
+        .populate("property", "propertyType address status")
+        .select("owner tenant property leaseStartDate leaseEndDate rentAmount securityDeposit isActive rentDueDay graceDays lateFeeType lateFeeValue createdAt updatedAt");
+
+      if (!lease) {
+        return res.status(StatusCodes.NOT_FOUND).json({ message: "Lease not found." });
+      }
+
+      return res.status(StatusCodes.OK).json({
+        message: `Lease marked as ${action === "active" ? "active" : "deactivated"}.`,
+        item: lease,
+      });
+    }
+
+    return res
+      .status(StatusCodes.BAD_REQUEST)
+      .json({ message: "Invalid type. Use owners, tenants, properties, or leases." });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -1978,14 +2218,26 @@ const createPropertyInquiry = async (req, res) => {
       message: (message || "").trim(),
     });
 
+    // Notify owner of new inquiry
     await createNotification({
       recipient: property.owner?._id,
       role: "owner",
       title: "New property inquiry",
       message: `${req.user.name || "A user"} is interested in your property in ${property.address?.city || "your listing"}.`,
       type: "inquiry",
-      actionPath: "/owner/dashboard",
+      actionPath: "/owner/inquiries",
       senderName: req.user.name || req.user.email || "Tenant",
+      metadata: { inquiryId: inquiry._id, propertyId: property._id },
+    });
+
+    // Notify tenant of their submission confirmation
+    await createNotification({
+      recipient: req.user.userId,
+      role: "tenant",
+      title: "Inquiry submitted",
+      message: `Your inquiry for ${property.propertyType} in ${property.address?.city || "property"} has been sent to the owner.`,
+      type: "inquiry",
+      actionPath: "/tenant/inquiries",
       metadata: { inquiryId: inquiry._id, propertyId: property._id },
     });
 
@@ -2169,9 +2421,29 @@ const getTenantDashboard = async (req, res) => {
   }
 };
 
+const getTenantLeases = async (req, res) => {
+  try {
+    const { includeInactive } = req.query;
+    const filter = { tenant: req.user.userId };
+    if (includeInactive !== "true") {
+      filter.isActive = true;
+    }
+
+    const leases = await Lease.find(filter)
+      .populate("property", "propertyType address description numberOfRooms")
+      .populate("owner", "name email phone")
+      .sort({ createdAt: -1 });
+
+    res.status(StatusCodes.OK).json({ leases });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 const getTenantLease = async (req, res) => {
   try {
     const lease = await Lease.findOne({ tenant: req.user.userId, isActive: true })
+      .sort({ createdAt: -1 })
       .populate("property", "propertyType address description numberOfRooms")
       .populate("owner", "name email phone");
     if (!lease) return res.status(StatusCodes.NOT_FOUND).json({ message: "No active lease found." });
@@ -3808,6 +4080,25 @@ const getOwnerExpenses = async (req, res) => {
     const ownerId = req.user.userId;
     const { propertyId, category, financialYear, startDate, endDate } = req.query;
 
+    let syncStart = null;
+    let syncEnd = null;
+    if (financialYear && /^\d{4}-\d{2}$/.test(financialYear)) {
+      const fyStartYear = Number.parseInt(financialYear.split("-")[0], 10);
+      syncStart = new Date(fyStartYear, 3, 1);
+      syncEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59);
+    }
+    if (startDate || endDate) {
+      syncStart = startDate ? new Date(startDate) : null;
+      syncEnd = endDate ? new Date(endDate) : null;
+    }
+
+    await getMissingVendorMaintenanceExpenses({
+      ownerOid: toObjectId(ownerId),
+      fyStart: syncStart,
+      fyEnd: syncEnd,
+      persist: true,
+    });
+
     const filter = { owner: ownerId };
     if (propertyId) filter.property = propertyId;
     if (category) filter.category = category;
@@ -4014,7 +4305,7 @@ const getAdvancedAnalytics = async (req, res) => {
     ]);
 
     // Fallback: include paid vendor maintenance requests missing linked expense rows
-    const missingMaintenance = await getMissingVendorMaintenanceExpenses({ ownerOid, fyStart, fyEnd });
+    const missingMaintenance = await getMissingVendorMaintenanceExpenses({ ownerOid, fyStart, fyEnd, persist: true });
     const monthlyExpensesCombined = mergeAggregateRows(monthlyExpenses, missingMaintenance.monthlyRows);
     const expensesByCategoryCombined = mergeCategoryRows(expensesByCategory, missingMaintenance.categoryRows);
 
@@ -4112,7 +4403,7 @@ const downloadTaxReport = async (req, res) => {
       Property.find({ owner: ownerOid, isActive: true }, "propertyType address"),
     ]);
 
-    const missingMaintenance = await getMissingVendorMaintenanceExpenses({ ownerOid, fyStart, fyEnd });
+    const missingMaintenance = await getMissingVendorMaintenanceExpenses({ ownerOid, fyStart, fyEnd, persist: true });
     const reportExpenses = [...expenses, ...missingMaintenance.entries].sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
@@ -4521,14 +4812,67 @@ const replyToReview = async (req, res) => {
     const { reply } = req.body;
     if (!reply || !reply.trim()) return res.status(StatusCodes.BAD_REQUEST).json({ message: "Reply text is required." });
 
-    const review = await PropertyReview.findOne({ _id: req.params.id, owner: ownerId });
+    const review = await PropertyReview.findOne({ _id: req.params.id, owner: ownerId })
+      .populate("tenant", "name email");
     if (!review) return res.status(StatusCodes.NOT_FOUND).json({ message: "Review not found." });
 
     review.ownerReply = reply.trim();
     review.ownerRepliedAt = new Date();
     await review.save();
 
+    // Notify tenant that owner replied to their review
+    await createNotification({
+      recipient: review.tenant?._id,
+      role: "tenant",
+      title: "Owner replied to your review",
+      message: `The property owner replied to your review.`,
+      type: "system",
+      actionPath: "/tenant/reviews",
+      metadata: { reviewId: review._id },
+    });
+
     res.status(StatusCodes.OK).json({ message: "Reply saved.", review });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updatePropertyReview = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const { overallRating, maintenanceRating, locationRating, valueRating, title, comment, pros, cons } = req.body;
+
+    const review = await PropertyReview.findOne({ _id: req.params.id, tenant: tenantId })
+      .populate("property", "propertyType address")
+      .populate("owner", "name email");
+    if (!review) return res.status(StatusCodes.NOT_FOUND).json({ message: "Review not found." });
+
+    // Update only the provided fields
+    if (overallRating !== undefined) review.overallRating = Number(overallRating);
+    if (maintenanceRating !== undefined) review.maintenanceRating = Number(maintenanceRating);
+    if (locationRating !== undefined) review.locationRating = Number(locationRating);
+    if (valueRating !== undefined) review.valueRating = Number(valueRating);
+    if (title !== undefined) review.title = (title || "").trim();
+    if (comment !== undefined) review.comment = (comment || "").trim();
+    if (pros !== undefined) review.pros = (pros || "").trim();
+    if (cons !== undefined) review.cons = (cons || "").trim();
+
+    await review.save();
+
+    // Notify owner about the review update
+    await createNotification({
+      recipient: review.owner?._id,
+      role: "owner",
+      title: "Review updated by tenant",
+      message: `${req.user.name || "A tenant"} updated their review for your property in ${review.property?.address?.city || "your listing"}.`,
+      type: "system",
+      actionPath: "/owner/reviews",
+      senderName: req.user.name || req.user.email,
+      metadata: { reviewId: review._id },
+    });
+
+    await review.populate("tenant", "name");
+    res.status(StatusCodes.OK).json({ message: "Review updated.", review });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -5168,17 +5512,20 @@ module.exports = {
   updateAdminVendorLeadStatus,
   getAdminStats,
   getAdminEntityList,
+  updateAdminEntityStatus,
   // Owner – Dashboard
   getOwnerDashboard,
   getOwnerAnalytics,
   exportOwnerAnalyticsCsv,
   // Tenant
   getTenantDashboard,
+  getTenantLeases,
   getTenantLease,
   getTenantRentHistory,
   submitTenantRentPayment,
   getTenantOwnerPaymentDetails,
   getTenantInquiries,
+  updatePropertyReview,
   requestTenantRevisit,
   createMaintenanceRequest,
   getTenantMaintenanceRequests,

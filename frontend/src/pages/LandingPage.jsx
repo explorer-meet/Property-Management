@@ -4,7 +4,7 @@ import {
   Building2, Home, Users, DollarSign, Wrench, Shield,
   BarChart3, Bell, ChevronRight, ChevronLeft, Star, CheckCircle2,
   ArrowRight, Menu, X, MapPin, TrendingUp, Clock, Download,
-  BriefcaseBusiness,
+  BriefcaseBusiness, LogOut,
 } from "lucide-react";
 import { formatCurrencyCompact, formatCurrency } from "../utils/currency";
 import api from "../utils/api";
@@ -316,6 +316,14 @@ const LandingPage = () => {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("pms_token");
+    localStorage.removeItem("pms_user");
+    setAuthUser(null);
+    setMobileMenuOpen(false);
+    navigate("/");
+  };
+
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
 
@@ -327,28 +335,28 @@ const LandingPage = () => {
             <div className="p-1.5 bg-blue-600 rounded-xl shadow">
               <Building2 className="w-5 h-5 text-white" />
             </div>
-            <span className="font-bold text-lg text-gray-900">PropManager</span>
+            <span className={`font-bold text-lg transition-colors duration-300 ${scrolled ? "text-gray-900" : "text-white"}`}>PropManager</span>
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1 rounded-2xl border border-blue-100/80 bg-white/85 px-2 py-1 shadow-[0_10px_28px_rgba(37,99,235,0.14)] backdrop-blur">
-            <a href="#features" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+          <nav className={`hidden md:flex items-center gap-1 rounded-2xl border px-2 py-1 backdrop-blur transition-all duration-300 ${scrolled ? "border-blue-100/80 bg-white/85 shadow-[0_10px_28px_rgba(37,99,235,0.14)]" : "border-white/20 bg-white/10"}`}>
+            <a href="#features" className={`group relative rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${scrolled ? "text-slate-700" : "text-white hover:text-blue-700"}`}>
               Features
               <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
             </a>
-            <a href="#browse-properties" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+            <a href="#browse-properties" className={`group relative rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${scrolled ? "text-slate-700" : "text-white hover:text-blue-700"}`}>
               Browse Properties
               <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
             </a>
-            <a href="#how-it-works" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+            <a href="#how-it-works" className={`group relative rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${scrolled ? "text-slate-700" : "text-white hover:text-blue-700"}`}>
               How it works
               <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
             </a>
-            <a href="#testimonials" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+            <a href="#testimonials" className={`group relative rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${scrolled ? "text-slate-700" : "text-white hover:text-blue-700"}`}>
               Reviews
               <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
             </a>
-            <a href="#vendor-program" className="group relative rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition-all duration-200 hover:text-blue-700 hover:bg-blue-50">
+            <a href="#vendor-program" className={`group relative rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${scrolled ? "text-slate-700" : "text-white hover:text-blue-700"}`}>
               Vendor Program
               <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
             </a>
@@ -357,16 +365,25 @@ const LandingPage = () => {
           {/* CTA */}
           <div className="hidden md:flex items-center gap-3">
             {isLoggedIn ? (
-              <button
-                type="button"
-                onClick={() => navigate(dashboardPath)}
-                className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm inline-flex items-center gap-1.5"
-              >
-                <Home size={14} /> Dashboard
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(dashboardPath)}
+                  className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm inline-flex items-center gap-1.5"
+                >
+                  <Home size={14} /> Dashboard
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-sm font-semibold border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-1.5"
+                >
+                  <LogOut size={14} /> Logout
+                </button>
+              </>
             ) : (
               <>
-                <Link to="/login" className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors px-3 py-2">
+                <Link to="/login" className={`text-sm font-medium transition-colors px-3 py-2 ${scrolled ? "text-gray-700 hover:text-blue-600" : "text-white/90 hover:text-white"}`}>
                   Sign In
                 </Link>
                 <Link to="/register" className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm">
@@ -377,7 +394,7 @@ const LandingPage = () => {
           </div>
 
           {/* Mobile hamburger */}
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2 rounded-lg hover:bg-gray-100">
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className={`md:hidden p-2 rounded-lg transition-colors ${scrolled ? "hover:bg-gray-100 text-gray-700" : "hover:bg-white/10 text-white"}`}>
             {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
@@ -392,16 +409,25 @@ const LandingPage = () => {
             <a href="#vendor-program" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Vendor Program</a>
             <div className="flex gap-3 pt-2">
               {isLoggedIn ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate(dashboardPath);
-                    setMobileMenuOpen(false);
-                  }}
-                  className="flex-1 text-center bg-blue-600 text-sm font-semibold text-white py-2 rounded-lg inline-flex items-center justify-center gap-1.5"
-                >
-                  <Home size={14} /> Dashboard
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate(dashboardPath);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="flex-1 text-center bg-blue-600 text-sm font-semibold text-white py-2 rounded-lg inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Home size={14} /> Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex-1 text-center border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 py-2 rounded-lg inline-flex items-center justify-center gap-1.5"
+                  >
+                    <LogOut size={14} /> Logout
+                  </button>
+                </>
               ) : (
                 <>
                   <Link to="/login" className="flex-1 text-center border border-gray-200 text-sm font-medium text-gray-700 py-2 rounded-lg">Sign In</Link>
