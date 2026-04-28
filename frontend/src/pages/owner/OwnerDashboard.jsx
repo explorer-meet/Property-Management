@@ -409,21 +409,38 @@ const OwnerDashboard = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveSectionTab(tab.id)}
-                  className={`rounded-3xl border px-4 py-4 text-left transition-all ${
+                  className={`group rounded-3xl border px-4 py-4 text-left transition-all duration-300 ${
                     active
-                      ? tab.activeClass
-                      : `border-slate-200 bg-white text-gray-700 hover:-translate-y-0.5 ${tab.idleClass}`
+                      ? `${tab.activeClass} ring-1 ring-inset ring-current/20`
+                      : `border-slate-200 bg-white text-gray-700 hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(15,23,42,0.10)] ${tab.idleClass}`
                   }`}
                   aria-pressed={active}
                 >
                   <div className="flex items-start gap-3">
-                    <span className={`mt-0.5 rounded-2xl border p-2.5 ${active ? tab.iconClass : "border-slate-200 bg-slate-50 text-gray-500"}`}>
+                    <span className={`mt-0.5 rounded-2xl border p-2.5 transition-transform duration-300 ${active ? `${tab.iconClass} scale-105` : "border-slate-200 bg-slate-50 text-gray-500 group-hover:scale-110 group-hover:-rotate-3"}`}>
                       <Icon size={16} />
                     </span>
-                    <span>
+                    <span className="flex-1">
                       <p className="text-sm font-bold">{tab.label}</p>
                       <p className={`mt-1 text-[11px] ${active ? tab.helperClass : "text-gray-500"}`}>{tab.helper}</p>
+
+                      <span className="mt-2 inline-flex items-center gap-1.5">
+                        {active ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-current/20 bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+                            Active section
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 transition-all group-hover:border-slate-300 group-hover:bg-slate-100">
+                            Click to open
+                            <ArrowRight size={11} className="transition-transform duration-300 group-hover:translate-x-1" />
+                          </span>
+                        )}
+                      </span>
                     </span>
+
+                    {!active ? (
+                      <span className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-sky-400 animate-pulse-soft" aria-hidden="true" />
+                    ) : null}
                   </div>
                 </button>
               );

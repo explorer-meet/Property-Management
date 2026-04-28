@@ -32,16 +32,6 @@ const ownerLinks = [
     ]
   },
   {
-    section: "Financial & Operations",
-    items: [
-      { to: "/owner/rent", label: "Rent Management", icon: DollarSign },
-      { to: "/owner/payment-details", label: "Payment Details", icon: Landmark },
-      { to: "/owner/expenses", label: "Expense Tracker", icon: Receipt },
-      { to: "/owner/analytics", label: "Analytics & Tax", icon: BarChart2 },
-      { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
-    ]
-  },
-  {
     section: "Communication",
     items: [
       { to: "/owner/vendors", label: "Vendors", icon: BriefcaseBusiness },
@@ -49,6 +39,16 @@ const ownerLinks = [
       { to: "/owner/reviews", label: "Property Reviews", icon: Star },
       { to: "/owner/notifications", label: "Notifications", icon: Bell },
       { to: "/owner/profile", label: "My Profile", icon: UserCircle2 },
+    ]
+  },
+  {
+    section: "Financial & Operations",
+    items: [
+      { to: "/owner/rent", label: "Rent Management", icon: DollarSign },
+      { to: "/owner/payment-details", label: "Payment Details", icon: Landmark },
+      { to: "/owner/expenses", label: "Expense Tracker", icon: Receipt },
+      { to: "/owner/analytics", label: "Analytics & Tax", icon: BarChart2 },
+      { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
     ]
   },
 ];
@@ -145,25 +145,15 @@ const Sidebar = () => {
 
   const links = isOwner ? ownerLinks : isVendor ? vendorLinks : tenantLinks;
   const brandPanelClass = isOwner
-    ? "from-indigo-100 via-white to-blue-100 border-indigo-100"
+    ? "from-slate-100 via-indigo-50 to-cyan-100 border-indigo-100"
     : isVendor
-      ? "from-teal-50 via-white to-emerald-50 border-teal-100"
-      : "from-emerald-50 via-white to-cyan-50 border-emerald-100";
+      ? "from-teal-100 via-white to-emerald-100 border-teal-100"
+      : "from-emerald-100 via-white to-cyan-100 border-emerald-100";
   const brandIconClass = isOwner
     ? "from-indigo-600 to-blue-600"
     : isVendor
       ? "from-teal-600 to-emerald-600"
       : "from-emerald-600 to-cyan-600";
-  const activeLinkClass = isOwner
-    ? "bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.35)]"
-    : isVendor
-      ? "bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-[0_10px_24px_rgba(13,148,136,0.35)]"
-      : "bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-[0_10px_24px_rgba(5,150,105,0.35)]";
-  const inactiveLinkClass = isOwner
-    ? "text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
-    : isVendor
-      ? "text-slate-600 hover:bg-teal-50 hover:text-teal-700"
-      : "text-slate-600 hover:bg-emerald-50 hover:text-emerald-700";
   const apiOrigin = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
   const profilePictureUrl = user?.profilePictureUrl
     ? /^https?:\/\//i.test(user.profilePictureUrl)
@@ -175,12 +165,12 @@ const Sidebar = () => {
 
   const sidebarContent = (
     <div className={`relative flex flex-col h-full overflow-hidden bg-gradient-to-b ${brandPanelClass}`}>
-      <div className="pointer-events-none absolute -top-14 -left-10 h-44 w-44 rounded-full bg-white/50 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-40 w-40 rounded-full bg-slate-200/30 blur-3xl" />
+      <div className="pointer-events-none absolute -top-14 -left-10 h-44 w-44 rounded-full bg-white/65 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-44 w-44 rounded-full bg-indigo-200/30 blur-3xl" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.45),transparent_35%)]" />
 
       {/* Logo */}
-      <div className="relative flex items-center gap-3 px-6 py-5 border-b border-white/60">
+      <div className="relative flex items-center gap-3 px-6 py-5 border-b border-white/70">
         <div className={`p-2 rounded-xl bg-gradient-to-br ${brandIconClass} shadow-lg`}>
           <Building2 className="w-5 h-5 text-white" />
         </div>
@@ -194,8 +184,8 @@ const Sidebar = () => {
       </div>
 
       {/* User Info */}
-      <div className="relative px-5 py-4 border-b border-white/60">
-        <div className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/80 p-3 backdrop-blur-sm shadow-sm">
+      <div className="relative px-5 py-4 border-b border-white/70">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/85 bg-white/85 p-3 backdrop-blur-sm shadow-sm">
           {profilePictureUrl ? (
             <img
               src={profilePictureUrl}
@@ -216,6 +206,10 @@ const Sidebar = () => {
 
       {/* Navigation */}
       <nav className="relative min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="mb-3 px-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Navigation</p>
+          <p className="text-[11px] text-slate-500">Grouped by daily workflow</p>
+        </div>
         {links.map((section, idx) => {
           const isExpanded = expandedSections[section.section] === true;
           
@@ -287,7 +281,7 @@ const Sidebar = () => {
               {/* Section Header - Clickable with Gradient */}
               <button
                 onClick={() => toggleSection(section.section)}
-                className={`w-full px-3 py-2.5 mb-2 rounded-lg bg-gradient-to-r ${colors.bg} border ${colors.border} transition-all duration-200 flex items-center gap-2.5 group hover:shadow-md hover:scale-105 transform`}
+                className={`w-full px-3 py-2.5 mb-2 rounded-xl bg-gradient-to-r ${colors.bg} border ${colors.border} transition-all duration-200 flex items-center gap-2.5 group hover:shadow-md`}
               >
                 <div className={`p-1.5 rounded-md ${colors.icon} flex-shrink-0`}>
                   <ChevronDown 
@@ -296,6 +290,9 @@ const Sidebar = () => {
                   />
                 </div>
                 <span className={`flex-1 text-left text-xs font-bold tracking-wide ${colors.header}`}>{section.section}</span>
+                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                  {section.items.length}
+                </span>
               </button>
               
               {/* Section Items - Collapsible */}
@@ -318,9 +315,9 @@ const Sidebar = () => {
                       }}
                       preventScrollReset
                       className={({ isActive }) =>
-                        `group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-l-3 ${
+                        `group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-l-4 ${
                           isActive
-                            ? `${colors.activeBorder} ${colors.activeBg} ${colors.activeText}`
+                            ? `${colors.activeBorder} ${colors.activeBg} ${colors.activeText} shadow-sm`
                             : `border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-700`
                         }`
                       }

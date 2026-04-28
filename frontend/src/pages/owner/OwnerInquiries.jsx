@@ -22,6 +22,35 @@ const defaultVisitDateTime = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T22:00`;
 };
 
+const STATUS_THEME = {
+  New: {
+    card: "border-amber-200 from-amber-50/70 to-white ring-1 ring-amber-100",
+    select: "border-amber-200 text-amber-700 focus:ring-amber-300",
+  },
+  "In Progress": {
+    card: "border-blue-200 from-blue-50/65 to-white ring-1 ring-blue-100",
+    select: "border-blue-200 text-blue-700 focus:ring-blue-300",
+  },
+  Contacted: {
+    card: "border-cyan-200 from-cyan-50/65 to-white ring-1 ring-cyan-100",
+    select: "border-cyan-200 text-cyan-700 focus:ring-cyan-300",
+  },
+  "Visit Planned": {
+    card: "border-violet-200 from-violet-50/65 to-white ring-1 ring-violet-100",
+    select: "border-violet-200 text-violet-700 focus:ring-violet-300",
+  },
+  Visited: {
+    card: "border-teal-200 from-teal-50/65 to-white ring-1 ring-teal-100",
+    select: "border-teal-200 text-teal-700 focus:ring-teal-300",
+  },
+  Closed: {
+    card: "border-gray-200 from-gray-50/70 to-white ring-1 ring-gray-100",
+    select: "border-gray-300 text-gray-600 focus:ring-gray-300",
+  },
+};
+
+const getStatusTheme = (status) => STATUS_THEME[status] || STATUS_THEME.New;
+
 const OwnerInquiries = () => {
   const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +168,22 @@ const OwnerInquiries = () => {
           </div>
         </div>
 
+        <div className="mb-4 flex flex-wrap gap-2">
+          {STATUS_OPTIONS.map((status) => {
+            const isActive = statusFilter === status;
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter(isActive ? null : status)}
+                className={`transition-transform hover:-translate-y-0.5 ${isActive ? "scale-[1.02]" : ""}`}
+              >
+                <StatusBadge status={status} />
+              </button>
+            );
+          })}
+        </div>
+
         {loading ? (
           <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">Loading inquiries...</div>
         ) : inquiries.length === 0 ? (
@@ -154,9 +199,10 @@ const OwnerInquiries = () => {
               .filter((i) => !statusFilter || i.status === statusFilter).map((inquiry) => {
               const draft = visitDraftByInquiry[inquiry._id] || {};
               const followUpNote = followUpByInquiry[inquiry._id] || "";
+              const theme = getStatusTheme(inquiry.status || "New");
 
               return (
-                <div key={inquiry._id} className="rounded-2xl border border-gray-100 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm transition-all duration-200 hover:shadow-md">
+                <div key={inquiry._id} className={`rounded-2xl border-l-4 bg-gradient-to-br p-4 shadow-sm transition-all duration-200 hover:shadow-md ${theme.card}`}>
                   <div className="flex flex-col gap-3">
                     <div>
                       <div className="flex items-center justify-between gap-2">
@@ -291,7 +337,7 @@ const OwnerInquiries = () => {
                         value={inquiry.status || "New"}
                         onChange={(e) => updateStatus(inquiry._id, e.target.value)}
                         disabled={updatingInquiryId === inquiry._id}
-                        className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-60"
+                        className={`rounded-lg border bg-white px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 disabled:opacity-60 ${theme.select}`}
                       >
                         {STATUS_OPTIONS.map((status) => (
                           <option key={status} value={status}>{status}</option>
