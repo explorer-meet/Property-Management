@@ -11,44 +11,45 @@ import api from "../utils/api";
 
 const ownerLinks = [
   {
-    section: "Dashboard & Overview",
+    section: "Dashboard",
     to: "/owner/dashboard",
     icon: LayoutDashboard,
     items: []
   },
   {
-    section: "Property Management",
+    section: "Properties & Tenants",
     items: [
       { to: "/owner/properties", label: "Properties", icon: Home },
       { to: "/owner/tenants", label: "Tenants & Leases", icon: Users },
       { to: "/owner/vacancies", label: "Vacancies", icon: MapPin },
-    ]
-  },
-  {
-    section: "Lease Management",
-    items: [
       { to: "/owner/renewals", label: "Lease Renewals", icon: RefreshCcw },
       { to: "/owner/move-out", label: "Move-Out Requests", icon: DoorOpen },
     ]
   },
   {
-    section: "Communication",
+    section: "Finance & Maintenance",
     items: [
-      { to: "/owner/vendors", label: "Vendors", icon: BriefcaseBusiness },
-      { to: "/owner/inquiries", label: "Inquiries", icon: MessageCircle },
-      { to: "/owner/reviews", label: "Property Reviews", icon: Star },
-      { to: "/owner/notifications", label: "Notifications", icon: Bell },
-      { to: "/owner/profile", label: "My Profile", icon: UserCircle2 },
+      { to: "/owner/rent", label: "Rent Management", icon: DollarSign },
+      { to: "/owner/expenses", label: "Expenses", icon: Receipt },
+      { to: "/owner/payment-details", label: "Payment Details", icon: Landmark },
+      { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
+      { to: "/owner/vendors", label: "Vendor Management", icon: BriefcaseBusiness },
     ]
   },
   {
-    section: "Financial & Operations",
+    section: "Communication",
     items: [
-      { to: "/owner/rent", label: "Rent Management", icon: DollarSign },
-      { to: "/owner/payment-details", label: "Payment Details", icon: Landmark },
-      { to: "/owner/expenses", label: "Expense Tracker", icon: Receipt },
+      { to: "/owner/inquiries", label: "Inquiries", icon: MessageCircle },
+      { to: "/owner/visitor-amenities", label: "Guest Logs", icon: ClipboardList },
+      { to: "/owner/reviews", label: "Property Reviews", icon: Star },
+      { to: "/owner/notifications", label: "Notifications", icon: Bell },
+    ]
+  },
+  {
+    section: "Reports & Account",
+    items: [
       { to: "/owner/analytics", label: "Analytics & Tax", icon: BarChart2 },
-      { to: "/owner/maintenance", label: "Maintenance", icon: Wrench },
+      { to: "/owner/profile", label: "My Profile", icon: UserCircle2 },
     ]
   },
 ];
@@ -215,16 +216,16 @@ const Sidebar = () => {
           
           // Map section names to colors for owner
           const getSectionColors = (sectionName) => {
-            if (sectionName === "Dashboard & Overview") 
+            if (sectionName === "Dashboard") 
               return { bg: "from-cyan-50 to-blue-50", border: "border-cyan-100", icon: "bg-cyan-500", header: "text-cyan-700", line: "from-cyan-300", activeBg: "bg-cyan-100", activeText: "text-cyan-700", activeBorder: "border-cyan-400" };
-            if (sectionName === "Property Management") 
+            if (sectionName === "Properties & Tenants") 
               return { bg: "from-indigo-50 to-purple-50", border: "border-indigo-100", icon: "bg-indigo-500", header: "text-indigo-700", line: "from-indigo-300", activeBg: "bg-indigo-100", activeText: "text-indigo-700", activeBorder: "border-indigo-400" };
-            if (sectionName === "Lease Management") 
-              return { bg: "from-violet-50 to-indigo-50", border: "border-violet-100", icon: "bg-violet-500", header: "text-violet-700", line: "from-violet-300", activeBg: "bg-violet-100", activeText: "text-violet-700", activeBorder: "border-violet-400" };
-            if (sectionName === "Financial & Operations") 
-              return { bg: "from-amber-50 to-yellow-50", border: "border-amber-100", icon: "bg-amber-500", header: "text-amber-700", line: "from-amber-300", activeBg: "bg-amber-100", activeText: "text-amber-700", activeBorder: "border-amber-400" };
+            if (sectionName === "Finance & Maintenance") 
+              return { bg: "from-amber-50 to-orange-50", border: "border-amber-100", icon: "bg-amber-500", header: "text-amber-700", line: "from-amber-300", activeBg: "bg-amber-100", activeText: "text-amber-700", activeBorder: "border-amber-400" };
             if (sectionName === "Communication") 
               return { bg: "from-rose-50 to-red-50", border: "border-rose-100", icon: "bg-rose-500", header: "text-rose-700", line: "from-rose-300", activeBg: "bg-rose-100", activeText: "text-rose-700", activeBorder: "border-rose-400" };
+            if (sectionName === "Reports & Account") 
+              return { bg: "from-teal-50 to-emerald-50", border: "border-teal-100", icon: "bg-teal-500", header: "text-teal-700", line: "from-teal-300", activeBg: "bg-teal-100", activeText: "text-teal-700", activeBorder: "border-teal-400" };
             
             // Tenant colors
             if (sectionName === "Dashboard") 

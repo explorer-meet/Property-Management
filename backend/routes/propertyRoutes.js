@@ -11,7 +11,7 @@ const {
   generateRentRecord, getOwnerRentPayments, updateRentPaymentInstructions, markRentPaid, markRentOverdue,
   getVacantProperties, updatePropertyStatus,
   getOwnerMaintenanceRequests, updateMaintenanceStatus, addCommentToRequest,
-  getOwnerVendors, assignVendorToMaintenanceRequest, decideVendorQuote, completeVendorPayment,
+  getOwnerVendors, updateVendorRateAndContract, rateVendor, getOwnerVendorInvoices, assignVendorToMaintenanceRequest, decideVendorQuote, completeVendorPayment,
   getAdminVendors, createAdminVendor, updateAdminVendor, deleteAdminVendor, getAdminVendorLeads, updateAdminVendorLeadStatus, getAdminStats, getAdminEntityList, updateAdminEntityStatus,
   getOwnerDashboard, getOwnerAnalytics, exportOwnerAnalyticsCsv,
   getTenantDashboard, getTenantLeases, getTenantLease, getTenantRentHistory, submitTenantRentPayment, getTenantOwnerPaymentDetails, getTenantInquiries, requestTenantRevisit,
@@ -34,7 +34,8 @@ const {
   verifyRazorpayPayment,
   // New features
   addExpense, getOwnerExpenses, updateExpense, deleteExpense,
-  getAdvancedAnalytics, downloadTaxReport,
+  getOwnerGuestLogs, updateOwnerGuestLogStatus,
+  getAdvancedAnalytics, downloadTaxReport, downloadOwnerStatement,
   downloadRentAgreement,
   submitPropertyReview, getPropertyReviews, getOwnerPropertyReviews, replyToReview, getTenantReviews, deleteReview, updatePropertyReview,
   // Vendor Portal
@@ -133,6 +134,9 @@ router.post("/vendor/maintenance/:id/payment-request", verifyToken, requireVendo
 
 // ── Owner – Vendors ───────────────────────────
 router.get("/owner/vendors", verifyToken, requireOwner, getOwnerVendors);
+router.patch("/owner/vendors/:id/rate-contract", verifyToken, requireOwner, updateVendorRateAndContract);
+router.post("/owner/vendors/:id/rate", verifyToken, requireOwner, rateVendor);
+router.get("/owner/vendor-invoices", verifyToken, requireOwner, getOwnerVendorInvoices);
 
 // ── Admin – Vendor Directory & Leads ──────────
 router.get("/admin/stats", verifyToken, requireAdmin, getAdminStats);
@@ -211,9 +215,14 @@ router.get("/owner/expenses", verifyToken, requireOwner, getOwnerExpenses);
 router.put("/owner/expenses/:id", verifyToken, requireOwner, updateExpense);
 router.delete("/owner/expenses/:id", verifyToken, requireOwner, deleteExpense);
 
+// ── Owner – Visitor Logs ───────────────────────
+router.get("/owner/visitor-logs", verifyToken, requireOwner, getOwnerGuestLogs);
+router.patch("/owner/visitor-logs/:id/status", verifyToken, requireOwner, updateOwnerGuestLogStatus);
+
 // ── Owner – Advanced Analytics & Tax Report ───
 router.get("/owner/advanced-analytics", verifyToken, requireOwner, getAdvancedAnalytics);
 router.get("/owner/tax-report/download", verifyToken, requireOwner, downloadTaxReport);
+router.get("/owner/statement/download", verifyToken, requireOwner, downloadOwnerStatement);
 
 // ── Rent Agreement ────────────────────────────
 router.get("/leases/:leaseId/rent-agreement", verifyToken, downloadRentAgreement);

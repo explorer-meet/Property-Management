@@ -64,6 +64,7 @@ export default function AdvancedAnalytics() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [downloadingStatement, setDownloadingStatement] = useState(false);
 
   // FY options
   const currentYear = new Date().getFullYear();
@@ -74,6 +75,16 @@ export default function AdvancedAnalytics() {
     return `${start}-${String(start + 1).slice(2)}`;
   });
   const [selectedFY, setSelectedFY] = useState(fyOptions[0]);
+  const [statementFrom, setStatementFrom] = useState(() => {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    return first.toISOString().slice(0, 10);
+  });
+  const [statementTo, setStatementTo] = useState(() => {
+    const now = new Date();
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return last.toISOString().slice(0, 10);
+  });
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
@@ -110,6 +121,40 @@ export default function AdvancedAnalytics() {
       toast.error("Failed to download report.");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleDownloadOwnerStatement = async () => {
+    if (!statementFrom || !statementTo) {
+      toast.error("Please select statement start and end dates.");
+      return;
+    }
+    if (statementFrom > statementTo) {
+      toast.error("Start date cannot be after end date.");
+      return;
+    }
+
+    setDownloadingStatement(true);
+    try {
+      const token = localStorage.getItem("pms_token");
+      const baseUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000/api");
+      const response = await fetch(
+        `${baseUrl}/owner/statement/download?fromDate=${encodeURIComponent(statementFrom)}&toDate=${encodeURIComponent(statementTo)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Owner_Statement_(${statementFrom}_-_${statementTo}).pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Owner statement downloaded.");
+    } catch {
+      toast.error("Failed to download owner statement.");
+    } finally {
+      setDownloadingStatement(false);
     }
   };
 
@@ -200,7 +245,7 @@ export default function AdvancedAnalytics() {
         title="Advanced Analytics"
         subtitle="Financial insights and ITR-ready tax reports"
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <select
               value={selectedFY}
               onChange={(e) => setSelectedFY(e.target.value)}
@@ -208,6 +253,28 @@ export default function AdvancedAnalytics() {
             >
               {fyOptions.map((fy) => <option key={fy} value={fy}>FY {fy}</option>)}
             </select>
+            <input
+              type="date"
+              value={statementFrom}
+              onChange={(e) => setStatementFrom(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              aria-label="Statement start date"
+            />
+            <input
+              type="date"
+              value={statementTo}
+              onChange={(e) => setStatementTo(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              aria-label="Statement end date"
+            />
+            <button
+              onClick={handleDownloadOwnerStatement}
+              disabled={downloadingStatement}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              <Download size={15} />
+              {downloadingStatement ? "Generating…" : "Download Owner Statement"}
+            </button>
             <button
               onClick={handleDownloadTaxReport}
               disabled={downloading}

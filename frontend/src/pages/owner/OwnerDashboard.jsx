@@ -2,6 +2,19 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart as RPieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
+import {
   Building2,
   Users,
   Wallet,
@@ -27,6 +40,7 @@ import {
   FileText,
   Sparkles,
   ArrowRight,
+  Download,
 } from "lucide-react";
 import api from "../../utils/api";
 import { formatCurrency } from "../../utils/currency";
@@ -35,11 +49,11 @@ import toast from "react-hot-toast";
 const MetricCard = ({ title, value, subtitle, icon: Icon, accent = "blue", onClick }) => {
   const accentMap = {
     blue: {
-      gradient: "from-sky-500 to-blue-600",
-      border: "border-sky-100",
-      bg: "bg-sky-50/90",
-      label: "text-sky-700",
-      value: "text-sky-950",
+      gradient: "from-cyan-500 to-blue-600",
+      border: "border-cyan-100",
+      bg: "bg-cyan-50/90",
+      label: "text-cyan-700",
+      value: "text-cyan-950",
     },
     green: {
       gradient: "from-emerald-500 to-teal-600",
@@ -56,7 +70,7 @@ const MetricCard = ({ title, value, subtitle, icon: Icon, accent = "blue", onCli
       value: "text-amber-950",
     },
     rose: {
-      gradient: "from-rose-500 to-red-500",
+      gradient: "from-rose-500 to-orange-500",
       border: "border-rose-100",
       bg: "bg-rose-50/90",
       label: "text-rose-700",
@@ -65,16 +79,9 @@ const MetricCard = ({ title, value, subtitle, icon: Icon, accent = "blue", onCli
   };
 
   const tone = accentMap[accent] || accentMap.blue;
-  const cardClass = [
-    "relative overflow-hidden rounded-3xl border p-5 text-left shadow-[0_14px_30px_rgba(15,23,42,0.06)] transition-all",
-    tone.border,
-    tone.bg,
-    onClick ? "hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(15,23,42,0.10)]" : "",
-  ].join(" ");
-
   const content = (
-    <div className={cardClass}>
-      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-90 ${tone.gradient}`} />
+    <div className={`relative overflow-hidden rounded-[28px] border ${tone.border} ${tone.bg} p-5 text-left shadow-[0_14px_30px_rgba(15,23,42,0.06)] transition-all ${onClick ? "hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(15,23,42,0.10)]" : ""}`}>
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.gradient}`} />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className={`text-[11px] font-bold uppercase tracking-[0.22em] ${tone.label}`}>{title}</p>
@@ -101,31 +108,91 @@ const MetricCard = ({ title, value, subtitle, icon: Icon, accent = "blue", onCli
 
 const QuickNavCard = ({ title, subtitle, icon: Icon, onClick, accent = "blue" }) => {
   const accentMap = {
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    green: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    amber: "bg-amber-50 text-amber-700 border-amber-100",
-    rose: "bg-rose-50 text-rose-700 border-rose-100",
-    violet: "bg-violet-50 text-violet-700 border-violet-100",
-    slate: "bg-slate-50 text-slate-700 border-slate-100",
+    blue: "bg-cyan-50 text-cyan-800 border-cyan-100",
+    green: "bg-emerald-50 text-emerald-800 border-emerald-100",
+    amber: "bg-amber-50 text-amber-800 border-amber-100",
+    rose: "bg-rose-50 text-rose-800 border-rose-100",
+    violet: "bg-fuchsia-50 text-fuchsia-800 border-fuchsia-100",
+    slate: "bg-slate-100 text-slate-800 border-slate-200",
   };
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-3xl border border-white/70 bg-white/95 p-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.06)] transition-all hover:-translate-y-1 hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)]"
+      className="group w-full rounded-[28px] border border-white/70 bg-white/95 p-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.06)] transition-all hover:-translate-y-1 hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)]"
     >
-      <div className="flex items-start gap-3">
-        <div className={`rounded-2xl border p-2.5 ${accentMap[accent] || accentMap.blue}`}>
-          <Icon size={18} />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className={`rounded-2xl border p-2.5 transition-transform group-hover:scale-105 ${accentMap[accent] || accentMap.blue}`}>
+            <Icon size={18} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900">{title}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{subtitle}</p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-900">{title}</p>
-          <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
-        </div>
+        <ArrowRight size={15} className="mt-1 shrink-0 text-slate-300 transition-transform group-hover:translate-x-1" />
       </div>
     </button>
   );
+};
+
+const SignalCard = ({ eyebrow, value, detail, icon: Icon, tone = "slate", onClick }) => {
+  const toneMap = {
+    slate: {
+      shell: "border-slate-800 bg-slate-950 text-white",
+      chip: "border-white/10 bg-white/10 text-slate-100",
+      text: "text-slate-300",
+      icon: "bg-white/10 text-cyan-300",
+    },
+    amber: {
+      shell: "border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 text-amber-950",
+      chip: "border-amber-100 bg-white/70 text-amber-700",
+      text: "text-amber-700",
+      icon: "bg-amber-100 text-amber-700",
+    },
+    emerald: {
+      shell: "border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-950",
+      chip: "border-emerald-100 bg-white/70 text-emerald-700",
+      text: "text-emerald-700",
+      icon: "bg-emerald-100 text-emerald-700",
+    },
+    rose: {
+      shell: "border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 text-rose-950",
+      chip: "border-rose-100 bg-white/70 text-rose-700",
+      text: "text-rose-700",
+      icon: "bg-rose-100 text-rose-700",
+    },
+  };
+
+  const palette = toneMap[tone] || toneMap.slate;
+  const body = (
+    <div className={`rounded-[28px] border p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${palette.shell}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${palette.chip}`}>
+            {eyebrow}
+          </span>
+          <p className="mt-4 text-3xl font-extrabold leading-none">{value}</p>
+          <p className={`mt-2 text-xs leading-5 ${palette.text}`}>{detail}</p>
+        </div>
+        <div className={`rounded-2xl p-2.5 ${palette.icon}`}>
+          <Icon size={18} />
+        </div>
+      </div>
+    </div>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="w-full text-left transition-transform hover:-translate-y-1">
+        {body}
+      </button>
+    );
+  }
+
+  return body;
 };
 
 const OwnerDashboard = () => {
@@ -138,23 +205,37 @@ const OwnerDashboard = () => {
   const [updatingInquiryId, setUpdatingInquiryId] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeSectionTab, setActiveSectionTab] = useState("overview");
+  const [rentRows, setRentRows] = useState([]);
+  const [expenseRows, setExpenseRows] = useState([]);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [{ data: dashboardData }, { data: inquiryData }, { data: maintenanceData }, { data: rentData }] = await Promise.all([
+        const [
+          { data: dashboardData },
+          { data: inquiryData },
+          { data: maintenanceData },
+          { data: rentData },
+          { data: expenseData },
+        ] = await Promise.all([
           api.get("/owner/dashboard"),
           api.get("/owner/inquiries"),
           api.get("/owner/maintenance"),
           api.get("/owner/rent"),
+          api.get("/owner/expenses"),
         ]);
 
         const inquiries = inquiryData?.inquiries || [];
         const requests = maintenanceData?.requests || [];
         const rents = rentData?.rents || [];
+        const expenses = expenseData?.expenses || [];
 
         setStats(dashboardData.stats || null);
         setRecentInquiries(inquiries.slice(0, 8));
+        setRentRows(rents);
+        setExpenseRows(expenses);
 
         const overdueRents = rents.filter((rent) => rent.status === "Overdue");
         const highPriorityRequests = requests.filter((req) => ["High", "Emergency"].includes(req.urgency));
@@ -230,12 +311,94 @@ const OwnerDashboard = () => {
     { new: 0, inProgress: 0, contacted: 0, closed: 0 }
   );
 
+  const totalExpenses = expenseRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const onTimeCount = rentRows.filter((row) => row.status === "Paid").length;
+  const overdueCount = rentRows.filter((row) => row.status === "Overdue").length;
+  const collectionBase = onTimeCount + overdueCount;
+  const collectionEfficiency = collectionBase > 0 ? (onTimeCount / collectionBase) * 100 : 0;
+
+  const occupancyData = [
+    { name: "Occupied", value: occupiedProperties, color: "#0891b2" },
+    { name: "Vacant", value: vacantProperties, color: "#f59e0b" },
+  ];
+
+  const collectionData = [
+    { name: "On-Time", value: onTimeCount, color: "#059669" },
+    { name: "Overdue", value: overdueCount, color: "#e11d48" },
+  ];
+
+  const revenueExpenseData = [
+    { name: "Revenue", amount: paidRent },
+    { name: "Expenses", amount: totalExpenses },
+  ];
+
+  const maintenanceCostByCategory = Object.entries(
+    expenseRows
+      .filter((row) => {
+        const source = `${row.category || ""} ${row.title || ""}`.toLowerCase();
+        return /(maintenance|repair|plumb|electri|hvac|service|clean|security|painting)/.test(source);
+      })
+      .reduce((acc, row) => {
+        const key = row.category || "Maintenance";
+        acc[key] = (acc[key] || 0) + Number(row.amount || 0);
+        return acc;
+      }, {})
+  )
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 6);
+
+  const handleExportExcel = async () => {
+    try {
+      setExportingExcel(true);
+      const response = await api.get("/owner/analytics/export", { responseType: "blob" });
+      const blob = new Blob([response.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `owner-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Analytics export downloaded.");
+    } catch {
+      toast.error("Failed to export analytics.");
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      const now = new Date();
+      const fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const toDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+      const response = await api.get("/owner/statement/download", {
+        params: { fromDate, toDate },
+        responseType: "blob",
+      });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `owner-statement-${fromDate}-to-${toDate}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("PDF report downloaded.");
+    } catch {
+      toast.error("Failed to export PDF report.");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const sectionTabs = [
     {
       id: "overview",
-      label: "Portfolio Overview",
+      label: "Portfolio Pulse",
       icon: Home,
-      helper: "KPIs and financial snapshot",
+      helper: "Revenue, occupancy, and exports",
+      stat: `${occupancyRate.toFixed(0)}% occupied`,
       activeClass: "border-cyan-200 bg-gradient-to-br from-cyan-50 to-blue-50 text-cyan-700 shadow-[0_8px_24px_rgba(6,182,212,0.18)]",
       iconClass: "bg-cyan-100 text-cyan-700 border-cyan-200",
       helperClass: "text-cyan-600",
@@ -243,9 +406,10 @@ const OwnerDashboard = () => {
     },
     {
       id: "leads",
-      label: "Leads & Growth",
+      label: "Leads Desk",
       icon: MessageCircle,
-      helper: "Inquiries and conversion flow",
+      helper: "Response speed and pipeline clarity",
+      stat: `${inquiryTotals.new} new to answer`,
       activeClass: "border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 text-amber-700 shadow-[0_8px_24px_rgba(245,158,11,0.2)]",
       iconClass: "bg-amber-100 text-amber-700 border-amber-200",
       helperClass: "text-amber-600",
@@ -253,9 +417,10 @@ const OwnerDashboard = () => {
     },
     {
       id: "operations",
-      label: "Operations",
+      label: "Ops Board",
       icon: ClipboardList,
-      helper: "Alerts and execution focus",
+      helper: "Alerts, maintenance, and action lanes",
+      stat: `${attentionCount} items in focus`,
       activeClass: "border-rose-200 bg-gradient-to-br from-rose-50 to-red-50 text-rose-700 shadow-[0_8px_24px_rgba(244,63,94,0.2)]",
       iconClass: "bg-rose-100 text-rose-700 border-rose-200",
       helperClass: "text-rose-600",
@@ -269,7 +434,6 @@ const OwnerDashboard = () => {
     { title: "Rent Management", subtitle: "Track pending, paid, and overdue rent cycles", icon: Wallet, onClick: () => navigate("/owner/rent"), accent: "amber" },
     { title: "Expense Tracker", subtitle: "Log repairs, bills, and property-level costs", icon: Receipt, onClick: () => navigate("/owner/expenses"), accent: "blue" },
     { title: "Advanced Analytics", subtitle: "See income vs expense trends and tax insights", icon: BarChart2, onClick: () => navigate("/owner/analytics"), accent: "violet" },
-    { title: "Property Reviews", subtitle: "Understand tenant feedback and improve retention", icon: Star, onClick: () => navigate("/owner/reviews"), accent: "rose" },
     { title: "Vacancies", subtitle: "Promote vacant inventory and fill empty units", icon: MapPin, onClick: () => navigate("/owner/vacancies"), accent: "violet" },
     { title: "Maintenance", subtitle: "Handle service requests and urgent issues", icon: Wrench, onClick: () => navigate("/owner/maintenance"), accent: "rose" },
     { title: "Notifications", subtitle: "Check recent updates and platform activity", icon: Bell, onClick: () => navigate("/owner/notifications"), accent: "slate" },
@@ -282,9 +446,9 @@ const OwnerDashboard = () => {
       statLabel: "Paid Collection",
       statValue: formatCurrency(paidRent),
       icon: Receipt,
-      accent: "from-blue-500 to-cyan-500",
-      border: "border-blue-100",
-      bg: "from-blue-50 to-cyan-50",
+      accent: "from-cyan-500 to-blue-500",
+      border: "border-cyan-100",
+      bg: "from-cyan-50 to-blue-50",
       onClick: () => navigate("/owner/expenses"),
     },
     {
@@ -293,9 +457,9 @@ const OwnerDashboard = () => {
       statLabel: "Overdue Exposure",
       statValue: formatCurrency(overdueRent),
       icon: BarChart2,
-      accent: "from-violet-500 to-purple-500",
-      border: "border-violet-100",
-      bg: "from-violet-50 to-purple-50",
+      accent: "from-fuchsia-500 to-indigo-500",
+      border: "border-fuchsia-100",
+      bg: "from-fuchsia-50 to-indigo-50",
       onClick: () => navigate("/owner/analytics"),
     },
     {
@@ -323,79 +487,84 @@ const OwnerDashboard = () => {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(245,158,11,0.12),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#eef5ff_44%,_#f9fafb_100%)] pb-10">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[linear-gradient(135deg,rgba(2,132,199,0.08),rgba(255,255,255,0))]" />
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_26%),radial-gradient(circle_at_85%_8%,_rgba(251,146,60,0.14),_transparent_22%),linear-gradient(180deg,_#f5f7fb_0%,_#f8fafc_38%,_#f2f6fb_100%)] pb-10">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[linear-gradient(135deg,rgba(15,23,42,0.04),rgba(255,255,255,0))]" />
       <div className="relative z-10 mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-[32px] border border-sky-100 bg-white/90 px-6 py-6 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm sm:px-8 sm:py-8">
-          <div className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-sky-100/70 blur-3xl" />
-          <div className="absolute bottom-0 right-16 h-28 w-28 rounded-full bg-amber-100/70 blur-2xl" />
-          <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr] xl:items-start">
+        <section className="relative overflow-hidden rounded-[36px] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] px-6 py-6 text-white shadow-[0_28px_65px_rgba(15,23,42,0.22)] sm:px-8 sm:py-8">
+          <div className="absolute -left-8 top-0 h-44 w-44 rounded-full bg-cyan-400/20 blur-3xl" />
+          <div className="absolute right-0 top-12 h-40 w-40 rounded-full bg-amber-400/15 blur-3xl" />
+          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-sky-700">
-                <Rocket size={12} /> Owner Command Center
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-100">
+                <Rocket size={12} /> Owner Operations Dashboard
               </div>
-              <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-slate-950 sm:text-[2.6rem]">
-                Run your portfolio like a premium asset business, not a spreadsheet.
+              <h1 className="mt-5 max-w-3xl text-3xl font-extrabold tracking-tight text-white sm:text-[2.9rem]">
+                Cleaner control, faster actions, and a portfolio view that feels premium.
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">
-                Welcome back {ownerDisplayName}. This dashboard is now optimized for visibility, faster decision making, and stronger owner confidence across leasing, rent, and operations.
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-[15px]">
+                Welcome back {ownerDisplayName}. The dashboard is now organized around what matters first: health, revenue, tenant demand, and operating risk.
               </p>
 
-              <div className="mt-5 flex flex-wrap gap-2.5">
-                <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-sky-700">Portfolio Health</p>
-                  <p className="mt-1 text-sm font-bold text-sky-950">{portfolioHealthTone}</p>
+              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Health</p>
+                  <p className="mt-2 text-lg font-bold text-white">{portfolioHealthTone}</p>
                 </div>
-                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">Occupancy</p>
-                  <p className="mt-1 text-sm font-bold text-emerald-950">{occupancyRate.toFixed(0)}% occupied</p>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Occupancy</p>
+                  <p className="mt-2 text-lg font-bold text-white">{occupancyRate.toFixed(0)}%</p>
                 </div>
-                <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">Leasing Pressure</p>
-                  <p className="mt-1 text-sm font-bold text-amber-950">{vacantProperties} vacant {vacantProperties === 1 ? "unit" : "units"}</p>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Collected</p>
+                  <p className="mt-2 text-lg font-bold text-white">{formatCurrency(paidRent)}</p>
                 </div>
-                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-700">Attention Queue</p>
-                  <p className="mt-1 text-sm font-bold text-rose-950">{attentionCount} priority item{attentionCount === 1 ? "" : "s"}</p>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Attention</p>
+                  <p className="mt-2 text-lg font-bold text-white">{attentionCount} live</p>
                 </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button type="button" onClick={() => navigate("/owner/properties")} className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition-all hover:-translate-y-0.5">
+                  Open Portfolio <ArrowRight size={15} />
+                </button>
+                <button type="button" onClick={() => navigate("/owner/analytics")} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/15">
+                  Analytics & Reports <BarChart2 size={15} />
+                </button>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_18px_40px_rgba(15,23,42,0.18)]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Focus Today</p>
-                  <p className="mt-1 text-lg font-bold text-white">What needs owner attention first</p>
-                </div>
-                <BellRing size={18} className="text-amber-300" />
-              </div>
-              <div className="mt-4 space-y-3">
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">New Leads</p>
-                  <p className="mt-1 text-2xl font-extrabold text-white">{newInquiries}</p>
-                  <p className="text-xs text-slate-300">Fresh prospects waiting for outreach.</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">Open Maintenance</p>
-                  <p className="mt-1 text-2xl font-extrabold text-white">{openMaintenanceRequests}</p>
-                  <p className="text-xs text-slate-300">Operational issues still active in the queue.</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">Revenue at Risk</p>
-                  <p className="mt-1 text-2xl font-extrabold text-white">{formatCurrency(overdueRent)}</p>
-                  <p className="text-xs text-slate-300">Overdue rent needing follow-up right now.</p>
-                </div>
-              </div>
+            <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-1">
+              <SignalCard eyebrow="Revenue at risk" value={formatCurrency(overdueRent)} detail="Overdue rent that needs immediate follow-up." icon={AlertTriangle} tone="rose" onClick={() => navigate("/owner/rent")} />
+              <SignalCard eyebrow="Open maintenance" value={`${openMaintenanceRequests}`} detail="Requests still active in the queue." icon={Wrench} tone="amber" onClick={() => navigate("/owner/maintenance")} />
+              <SignalCard eyebrow="New inquiries" value={`${newInquiries}`} detail="Fresh leads waiting for outreach from your team." icon={BellRing} tone="emerald" onClick={() => navigate("/owner/inquiries")} />
             </div>
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-white/70 bg-white/80 p-4 shadow-[0_14px_30px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+        <section className="rounded-[30px] border border-white/80 bg-white/85 p-4 shadow-[0_14px_30px_rgba(15,23,42,0.06)] backdrop-blur-sm">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
             <MetricCard title="Total Properties" value={stats?.totalProperties || 0} subtitle="Portfolio-wide inventory" icon={Building2} accent="blue" onClick={() => navigate("/owner/properties")} />
             <MetricCard title="Active Leases" value={stats?.activeLeases || 0} subtitle="Current tenant occupancy" icon={Users} accent="green" onClick={() => navigate("/owner/tenants")} />
             <MetricCard title="Pending Rent" value={formatCurrency(pendingRent)} subtitle="Collection still outstanding" icon={Wallet} accent="amber" onClick={() => navigate("/owner/rent")} />
             <MetricCard title="Active Leads" value={activeLeadCount} subtitle="Prospects still moving through pipeline" icon={MessageCircle} accent="rose" onClick={() => navigate("/owner/inquiries")} />
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-indigo-100 bg-white/92 p-6 shadow-[0_14px_30px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-700">Workspace Switcher</p>
+              <h2 className="mt-1 text-xl font-extrabold text-slate-900">Choose the decision area you want to work in</h2>
+              <p className="mt-1 text-sm text-slate-600">Each workspace condenses the dashboard into one clear operational view.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/owner/analytics")}
+              className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+            >
+              Open Detailed Analytics
+            </button>
           </div>
         </section>
 
@@ -423,7 +592,7 @@ const OwnerDashboard = () => {
                     <span className="flex-1">
                       <p className="text-sm font-bold">{tab.label}</p>
                       <p className={`mt-1 text-[11px] ${active ? tab.helperClass : "text-gray-500"}`}>{tab.helper}</p>
-
+                      <p className={`mt-2 text-xs font-semibold ${active ? tab.helperClass : "text-slate-600"}`}>{tab.stat}</p>
                       <span className="mt-2 inline-flex items-center gap-1.5">
                         {active ? (
                           <span className="inline-flex items-center gap-1 rounded-full border border-current/20 bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
@@ -437,10 +606,6 @@ const OwnerDashboard = () => {
                         )}
                       </span>
                     </span>
-
-                    {!active ? (
-                      <span className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-sky-400 animate-pulse-soft" aria-hidden="true" />
-                    ) : null}
                   </div>
                 </button>
               );
@@ -452,120 +617,168 @@ const OwnerDashboard = () => {
           <div className="space-y-6 rounded-[26px] bg-transparent p-3 sm:p-4">
             {activeSectionTab === "overview" && (
               <>
-                <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h3 className="inline-flex items-center gap-2 text-base font-bold text-gray-900"><Sparkles size={18} className="text-indigo-600" /> Feature Studio</h3>
-                    <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-indigo-700">New capabilities</span>
-                  </div>
-                  <p className="mb-5 text-sm text-gray-600">Access your newest tools in one place to improve profitability, reporting, tenant experience, and operational speed.</p>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {featureStudioItems.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.title}
-                          type="button"
-                          onClick={item.onClick}
-                          className={`group rounded-3xl border ${item.border} bg-gradient-to-br ${item.bg} p-4 text-left transition-all hover:-translate-y-1 hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)]`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold text-gray-900">{item.title}</p>
-                              <p className="mt-1 text-xs leading-5 text-gray-600">{item.subtitle}</p>
-                            </div>
-                            <span className={`shrink-0 rounded-2xl bg-gradient-to-br ${item.accent} p-2.5 text-white shadow-md`}>
-                              <Icon size={16} />
-                            </span>
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-between">
-                            <div>
-                              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">{item.statLabel}</p>
-                              <p className="mt-1 text-lg font-extrabold text-gray-900">{item.statValue}</p>
-                            </div>
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700">
-                              Open <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-                  <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-gray-900"><TrendingUp size={18} className="text-emerald-600" /> Portfolio Health</h3>
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                  <section className="rounded-[28px] border border-white/70 bg-white/96 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                    <div className="mb-5 flex items-center justify-between">
+                      <div>
+                        <h3 className="inline-flex items-center gap-2 text-base font-bold text-slate-900"><TrendingUp size={18} className="text-cyan-600" /> Performance Canvas</h3>
+                        <p className="mt-1 text-sm text-slate-500">A single view for occupancy, collections, and profitability.</p>
+                      </div>
                       <button type="button" onClick={() => navigate("/owner/properties")} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Open Portfolio</button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="rounded-3xl border border-sky-100 bg-sky-50 p-5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-sky-700">Occupancy Rate</p>
-                        <p className="mt-3 text-4xl font-extrabold text-sky-950">{occupancyRate.toFixed(0)}%</p>
-                        <p className="mt-2 text-xs font-medium text-sky-700">{occupiedProperties} occupied out of {totalProperties} properties</p>
+
+                    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                      <div className="rounded-3xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-blue-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-700">Occupancy Mix</p>
+                        <div className="mt-3 h-56">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RPieChart>
+                              <Pie data={occupancyData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={78}>
+                                {occupancyData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                              </Pie>
+                              <Tooltip formatter={(value) => [`${value} properties`, "Count"]} />
+                              <Legend wrapperStyle={{ fontSize: 11 }} />
+                            </RPieChart>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
-                      <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-700">Vacancy Exposure</p>
-                        <p className="mt-3 text-4xl font-extrabold text-amber-950">{vacancyRate.toFixed(0)}%</p>
-                        <p className="mt-2 text-xs font-medium text-amber-700">{vacantProperties} units ready for leasing</p>
+
+                      <div className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Collection Quality</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-900">{collectionEfficiency.toFixed(1)}% on-time performance</p>
+                        <div className="mt-3 h-56">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RPieChart>
+                              <Pie data={collectionData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={78}>
+                                {collectionData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                              </Pie>
+                              <Tooltip formatter={(value) => [`${value} records`, "Count"]} />
+                              <Legend wrapperStyle={{ fontSize: 11 }} />
+                            </RPieChart>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
-                      <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-700">Collection Snapshot</p>
-                        <p className="mt-3 text-4xl font-extrabold text-emerald-950">{formatCurrency(paidRent)}</p>
-                        <p className="mt-2 text-xs font-medium text-emerald-700">Paid amount received across active rent cycles</p>
+
+                      <div className="rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 p-4 lg:col-span-2">
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Revenue vs Expenses</p>
+                        <div className="mt-3 h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={revenueExpenseData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                              <YAxis tickFormatter={(v) => `?${Math.round(v / 1000)}k`} tick={{ fontSize: 11 }} />
+                              <Tooltip formatter={(value) => [formatCurrency(value), "Amount"]} />
+                              <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
+                                {revenueExpenseData.map((entry) => (
+                                  <Cell key={entry.name} fill={entry.name === "Revenue" ? "#0f766e" : "#ea580c"} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
-                      <div className="rounded-3xl border border-rose-100 bg-rose-50 p-5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-rose-700">Open Issues</p>
-                        <p className="mt-3 text-4xl font-extrabold text-rose-950">{openMaintenanceRequests}</p>
-                        <p className="mt-2 text-xs font-medium text-rose-700">Maintenance requests still requiring action</p>
-                      </div>
-                      <button type="button" onClick={() => navigate("/owner/expenses")} className="rounded-3xl border border-blue-100 bg-blue-50 p-5 text-left hover:-translate-y-0.5 transition-all">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-700">Expense Tracker</p>
-                        <p className="mt-3 text-sm font-bold text-blue-800">Track property expenses & net income</p>
-                        <p className="mt-2 text-xs font-medium text-blue-600">Go to Expense Tracker →</p>
-                      </button>
-                      <button type="button" onClick={() => navigate("/owner/analytics")} className="rounded-3xl border border-purple-100 bg-purple-50 p-5 text-left hover:-translate-y-0.5 transition-all">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-purple-700">Tax Report</p>
-                        <p className="mt-3 text-sm font-bold text-purple-800">Annual income statement & ITR PDF</p>
-                        <p className="mt-2 text-xs font-medium text-purple-600">Go to Analytics →</p>
-                      </button>
                     </div>
                   </section>
 
-                  <section className="rounded-[28px] border border-slate-900 bg-slate-950 p-6 text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)]">
-                    <h3 className="inline-flex items-center gap-2 text-base font-bold text-white"><ClipboardList size={18} className="text-cyan-300" /> Summary At A Glance</h3>
-                    <div className="mt-4 space-y-3">
-                      <button type="button" onClick={() => navigate("/owner/inquiries")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Total Inquiries</p>
-                        <p className="mt-1 text-lg font-bold text-white">{totalInquiries}</p>
-                        <p className="text-xs text-slate-300">{newInquiries} are still new and waiting for outreach</p>
-                      </button>
-                      <button type="button" onClick={() => navigate("/owner/tenants")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Lease Activity</p>
-                        <p className="mt-1 text-lg font-bold text-white">{activeLeases} active lease{activeLeases === 1 ? "" : "s"}</p>
-                        <p className="text-xs text-slate-300">Use Tenants & Leases to review renewals and move-outs</p>
-                      </button>
-                      <button type="button" onClick={() => navigate("/owner/maintenance")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Immediate Focus</p>
-                        <p className="mt-1 text-lg font-bold text-white">{attentionCount}</p>
-                        <p className="text-xs text-slate-300">Tasks from maintenance, lead follow-up, and overdue rent</p>
-                      </button>
+                  <div className="space-y-5">
+                    <section className="rounded-[28px] border border-slate-900 bg-slate-950 p-6 text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)]">
+                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-white"><ClipboardList size={18} className="text-cyan-300" /> Owner Radar</h3>
+                      <div className="mt-4 space-y-3">
+                        <button type="button" onClick={() => navigate("/owner/inquiries")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Lead Queue</p>
+                          <p className="mt-1 text-lg font-bold text-white">{totalInquiries}</p>
+                          <p className="text-xs text-slate-300">{newInquiries} are new and still need first contact.</p>
+                        </button>
+                        <button type="button" onClick={() => navigate("/owner/tenants")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Lease Base</p>
+                          <p className="mt-1 text-lg font-bold text-white">{activeLeases} active lease{activeLeases === 1 ? "" : "s"}</p>
+                          <p className="text-xs text-slate-300">Review renewals and move-outs from the tenant workspace.</p>
+                        </button>
+                        <button type="button" onClick={() => navigate("/owner/rent")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Collection Pressure</p>
+                          <p className="mt-1 text-lg font-bold text-white">{formatCurrency(pendingRent + overdueRent)}</p>
+                          <p className="text-xs text-slate-300">Pending plus overdue rent exposure across active cycles.</p>
+                        </button>
+                      </div>
+                    </section>
+
+                    <section className="rounded-[28px] border border-violet-100 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-slate-900"><Download size={18} className="text-violet-600" /> Reports & Downloads</h3>
+                      <p className="mt-2 text-sm text-slate-600">Export analytics snapshots and monthly statements in one click.</p>
+                      <div className="mt-4 grid grid-cols-1 gap-2">
+                        <button
+                          type="button"
+                          onClick={handleExportExcel}
+                          disabled={exportingExcel}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-60"
+                        >
+                          <Download size={14} /> {exportingExcel ? "Exporting..." : "Export to Excel (CSV)"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleExportPdf}
+                          disabled={exportingPdf}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
+                        >
+                          <FileText size={14} /> {exportingPdf ? "Generating..." : "Export Monthly PDF"}
+                        </button>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                  <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-gray-900"><Sparkles size={18} className="text-indigo-600" /> Growth Tools</h3>
+                      <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-indigo-700">Owner essentials</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {featureStudioItems.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.title}
+                            type="button"
+                            onClick={item.onClick}
+                            className={`group rounded-3xl border ${item.border} bg-gradient-to-br ${item.bg} p-4 text-left transition-all hover:-translate-y-1 hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)]`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-gray-900">{item.title}</p>
+                                <p className="mt-1 text-xs leading-5 text-gray-600">{item.subtitle}</p>
+                              </div>
+                              <span className={`shrink-0 rounded-2xl bg-gradient-to-br ${item.accent} p-2.5 text-white shadow-md`}>
+                                <Icon size={16} />
+                              </span>
+                            </div>
+                            <div className="mt-4 flex items-center justify-between">
+                              <div>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">{item.statLabel}</p>
+                                <p className="mt-1 text-lg font-extrabold text-gray-900">{item.statValue}</p>
+                              </div>
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700">
+                                Open <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-gray-900"><Home size={18} className="text-blue-600" /> Fast Lanes</h3>
+                      <p className="text-xs font-medium text-gray-500">Direct access to daily owner tasks</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {quickNavItems.map((item) => (
+                        <QuickNavCard key={item.title} {...item} />
+                      ))}
                     </div>
                   </section>
                 </div>
-
-                <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h3 className="inline-flex items-center gap-2 text-base font-bold text-gray-900"><Home size={18} className="text-blue-600" /> Quick Navigation</h3>
-                    <p className="text-xs font-medium text-gray-500">Jump directly into any owner workflow</p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {quickNavItems.map((item) => (
-                      <QuickNavCard key={item.title} {...item} />
-                    ))}
-                  </div>
-                </section>
               </>
             )}
 
@@ -573,8 +786,11 @@ const OwnerDashboard = () => {
               <>
                 <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
                   <div className="mb-4 flex items-center justify-between">
-                    <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><MessageCircle size={18} className="text-blue-600" /> Recent Property Inquiries</h3>
-                    <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-blue-700">{stats?.totalInquiries || 0} total</span>
+                    <div>
+                      <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><MessageCircle size={18} className="text-blue-600" /> Recent Property Inquiries</h3>
+                      <p className="mt-1 text-sm text-slate-500">A simplified queue for response management and status updates.</p>
+                    </div>
+                    <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-blue-700">{totalInquiries} total</span>
                   </div>
 
                   {recentInquiries.length === 0 ? (
@@ -591,7 +807,7 @@ const OwnerDashboard = () => {
                               value={inquiry.status || "New"}
                               onChange={(e) => updateInquiryStatus(inquiry._id, e.target.value)}
                               disabled={updatingInquiryId === inquiry._id}
-                              className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700"
+                              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2 text-[11px] font-semibold text-gray-700"
                             >
                               <option value="New">New</option>
                               <option value="In Progress">In Progress</option>
@@ -654,7 +870,10 @@ const OwnerDashboard = () => {
               <>
                 <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
                   <div className="mb-4 flex items-center justify-between">
-                    <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><BellRing size={18} className="text-blue-600" /> Smart Alerts</h3>
+                    <div>
+                      <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><BellRing size={18} className="text-blue-600" /> Smart Alerts</h3>
+                      <p className="mt-1 text-sm text-slate-500">Critical items are isolated here so the operations view stays actionable.</p>
+                    </div>
                     <span className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">{alerts.length} active</span>
                   </div>
 
@@ -665,13 +884,7 @@ const OwnerDashboard = () => {
                       {alerts.map((alert) => (
                         <div key={alert.id} className="rounded-3xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm">
                           <div className="flex items-start gap-3">
-                            <div
-                              className={`rounded-2xl p-2.5 ${
-                                alert.id === "overdue"
-                                  ? "bg-rose-100 text-rose-600"
-                                  : "bg-amber-100 text-amber-600"
-                              }`}
-                            >
+                            <div className={`rounded-2xl p-2.5 ${alert.id === "overdue" ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-600"}`}>
                               {alert.id === "overdue" ? <Wallet size={18} /> : <Wrench size={18} />}
                             </div>
                             <div>
@@ -688,9 +901,9 @@ const OwnerDashboard = () => {
                 <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
                   <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><Rocket size={18} className="text-indigo-600" /> Quick Execution Actions</h3>
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <button onClick={() => navigate("/owner/properties")} className="rounded-3xl border border-blue-100 bg-blue-50/80 px-4 py-4 text-left transition-all hover:-translate-y-1 hover:shadow-md">
+                    <button onClick={() => navigate("/owner/properties")} className="rounded-3xl border border-cyan-100 bg-cyan-50/80 px-4 py-4 text-left transition-all hover:-translate-y-1 hover:shadow-md">
                       <div className="flex items-start gap-3">
-                        <div className="rounded-2xl bg-blue-100 p-2.5 text-blue-700"><Building2 size={18} /></div>
+                        <div className="rounded-2xl bg-cyan-100 p-2.5 text-cyan-700"><Building2 size={18} /></div>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">Open Properties</p>
                           <p className="mt-1 text-xs text-gray-600">Review listings, availability, and unit details.</p>
@@ -732,39 +945,27 @@ const OwnerDashboard = () => {
                     </div>
                   </section>
 
-                  <section className="rounded-[28px] border border-slate-900 bg-slate-950 p-6 text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)]">
-                    <h3 className="inline-flex items-center gap-2 text-base font-bold text-white"><ClipboardList size={18} className="text-indigo-300" /> Operational Snapshot</h3>
-                    <div className="mt-4 space-y-3">
-                      <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3">
-                        <div className="flex items-start gap-3">
-                          <div className="rounded-xl bg-rose-400/15 p-2 text-rose-200"><Wrench size={16} /></div>
-                          <div>
-                            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-rose-200">Maintenance Queue</p>
-                            <p className="mt-1 text-lg font-bold text-white">{openMaintenanceRequests} open request{openMaintenanceRequests === 1 ? "" : "s"}</p>
-                            <p className="text-xs text-rose-100">Visit Maintenance to clear operational bottlenecks.</p>
-                          </div>
+                  <section className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-slate-900"><BarChart2 size={18} className="text-rose-600" /> Maintenance Cost Analysis</h3>
+                      <p className="text-xs font-medium text-slate-500">Top cost-driving categories</p>
+                    </div>
+                    <div className="h-72">
+                      {maintenanceCostByCategory.length === 0 ? (
+                        <div className="flex h-full items-center justify-center rounded-2xl border border-rose-100 bg-white text-sm text-rose-600">
+                          No categorized maintenance expenses yet.
                         </div>
-                      </div>
-                      <div className="rounded-2xl border border-violet-400/20 bg-violet-400/10 px-4 py-3">
-                        <div className="flex items-start gap-3">
-                          <div className="rounded-xl bg-violet-400/15 p-2 text-violet-200"><MapPin size={16} /></div>
-                          <div>
-                            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-200">Leasing Availability</p>
-                            <p className="mt-1 text-lg font-bold text-white">{vacantProperties} vacant propert{vacantProperties === 1 ? "y" : "ies"}</p>
-                            <p className="text-xs text-violet-100">Use Vacancies and Inquiries together to improve fill rate.</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
-                        <div className="flex items-start gap-3">
-                          <div className="rounded-xl bg-amber-400/15 p-2 text-amber-200"><Wallet size={16} /></div>
-                          <div>
-                            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-200">Financial Pressure</p>
-                            <p className="mt-1 text-lg font-bold text-white">{formatCurrency(pendingRent + overdueRent)}</p>
-                            <p className="text-xs text-amber-100">Combine rent follow-up with tenant communication for faster resolution.</p>
-                          </div>
-                        </div>
-                      </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={maintenanceCostByCategory} layout="vertical" margin={{ left: 10, right: 8 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                            <XAxis type="number" tickFormatter={(v) => `?${Math.round(v / 1000)}k`} tick={{ fontSize: 11 }} />
+                            <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+                            <Tooltip formatter={(value) => [formatCurrency(value), "Cost"]} />
+                            <Bar dataKey="amount" fill="#e11d48" radius={[0, 8, 8, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
                     </div>
                   </section>
                 </div>

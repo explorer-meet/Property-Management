@@ -14,6 +14,9 @@ const LeaseRenewal = require("../models/LeaseRenewal");
 const PropertyInquiry = require("../models/PropertyInquiry");
 const Notification = require("../models/Notification");
 const Expense = require("../models/Expense");
+const GuestLog = require("../models/GuestLog");
+const AmenityBooking = require("../models/AmenityBooking");
+const ShortTermStay = require("../models/ShortTermStay");
 const PropertyReview = require("../models/PropertyReview");
 const VendorLead = require("../models/VendorLead");
 const PDFDocument = require("pdfkit");
@@ -274,6 +277,328 @@ const getMissingVendorMaintenanceExpenses = async ({ ownerOid, fyStart, fyEnd, p
 
   const categoryRows = total > 0 ? [{ _id: "Maintenance", total }] : [];
   return { total, monthlyRows, categoryRows, entries: fallbackEntries };
+};
+
+const getTenantLeaseContext = async (tenantId) => {
+  const lease = await Lease.findOne({
+    tenant: tenantId,
+    status: "Active",
+    leaseStartDate: { $lte: new Date() },
+    leaseEndDate: { $gte: new Date() },
+  })
+    .populate("property", "owner propertyType address")
+    .sort({ leaseEndDate: -1 });
+
+  if (!lease || !lease.property?.owner) return null;
+  return {
+    lease,
+    ownerId: lease.property.owner,
+    propertyId: lease.property._id,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: Visitor / Amenities / Short-Term Stay
+// ─────────────────────────────────────────────────────────────────────────────
+
+const createTenantGuestLog = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const { visitorName, visitorPhone, purpose, visitDate, vehicleNumber, notes } = req.body;
+    if (!visitorName || !visitDate) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "visitorName and visitDate are required." });
+    }
+
+    const context = await getTenantLeaseContext(tenantId);
+    if (!context) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Active lease is required for visitor logging." });
+    }
+
+    const log = await GuestLog.create({
+      owner: context.ownerId,
+      tenant: tenantId,
+      property: context.propertyId,
+      visitorName: String(visitorName).trim(),
+      visitorPhone: String(visitorPhone || "").trim(),
+      purpose: String(purpose || "").trim(),
+      visitDate: new Date(visitDate),
+      vehicleNumber: String(vehicleNumber || "").trim(),
+      notes: String(notes || "").trim(),
+    });
+
+    await createNotification({
+      recipient: context.ownerId,
+      role: "owner",
+      title: "New visitor log",
+      message: `${req.user.name || "Tenant"} added a visitor entry for ${log.visitorName}.`,
+      type: "system",
+      actionPath: "/owner/visitor-amenities",
+      senderName: req.user.name || req.user.email,
+    });
+
+    res.status(StatusCodes.CREATED).json({ message: "Visitor log created.", log });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getTenantGuestLogs = async (req, res) => {
+  try {
+    const logs = await GuestLog.find({ tenant: req.user.userId })
+      .sort({ visitDate: -1, createdAt: -1 })
+      .limit(200)
+      .populate("property", "propertyType address");
+    res.status(StatusCodes.OK).json({ logs });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getOwnerGuestLogs = async (req, res) => {
+  try {
+    const logs = await GuestLog.find({ owner: req.user.userId })
+      .sort({ visitDate: -1, createdAt: -1 })
+      .limit(300)
+      .populate("tenant", "name email")
+      .populate("property", "propertyType address");
+    res.status(StatusCodes.OK).json({ logs });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updateOwnerGuestLogStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!["Expected", "Checked-In", "Checked-Out", "Cancelled"].includes(status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid status." });
+    }
+
+    const log = await GuestLog.findOne({ _id: req.params.id, owner: req.user.userId });
+    if (!log) return res.status(StatusCodes.NOT_FOUND).json({ message: "Visitor log not found." });
+
+    if (log.status === "Checked-Out" || log.status === "Cancelled") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "This guest log is already completed." });
+    }
+    if (status === "Checked-In" && log.status !== "Expected") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Only expected visitors can be checked in." });
+    }
+    if (status === "Checked-Out" && log.status !== "Checked-In") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Visitor must be checked in before check out." });
+    }
+    if (status === "Cancelled" && log.status === "Checked-In") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Checked-in visitor must be checked out." });
+    }
+
+    log.status = status;
+    if (status === "Checked-In") log.checkInAt = new Date();
+    if (status === "Checked-Out") log.checkOutAt = new Date();
+    if (status === "Cancelled") {
+      log.checkInAt = null;
+      log.checkOutAt = null;
+    }
+    await log.save();
+
+    if (log.sourceInquiry && status === "Checked-Out") {
+      await PropertyInquiry.findOneAndUpdate(
+        { _id: log.sourceInquiry, owner: req.user.userId },
+        { status: "Visited", visitedAt: log.checkOutAt || new Date() }
+      );
+    }
+
+    if (log.sourceInquiry && status === "Cancelled") {
+      await PropertyInquiry.findOneAndUpdate(
+        { _id: log.sourceInquiry, owner: req.user.userId },
+        {
+          status: log.inquiryStatusBeforeVisit || "New",
+          visitScheduledAt: null,
+          visitNote: "",
+          visitedAt: null,
+          revisitRequested: false,
+        }
+      );
+    }
+
+    res.status(StatusCodes.OK).json({ message: "Visitor status updated.", log });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const createTenantAmenityBooking = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const { amenityType, title, bookingDate, startTime, endTime, notes } = req.body;
+    if (!amenityType || !bookingDate || !startTime || !endTime) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "amenityType, bookingDate, startTime and endTime are required." });
+    }
+
+    const context = await getTenantLeaseContext(tenantId);
+    if (!context) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Active lease is required for amenity booking." });
+    }
+
+    const booking = await AmenityBooking.create({
+      owner: context.ownerId,
+      tenant: tenantId,
+      property: context.propertyId,
+      amenityType,
+      title: String(title || "").trim(),
+      bookingDate: new Date(bookingDate),
+      startTime: String(startTime).trim(),
+      endTime: String(endTime).trim(),
+      notes: String(notes || "").trim(),
+    });
+
+    await createNotification({
+      recipient: context.ownerId,
+      role: "owner",
+      title: "New amenity booking request",
+      message: `${req.user.name || "Tenant"} requested ${amenityType} booking.`,
+      type: "system",
+      actionPath: "/owner/visitor-amenities",
+      senderName: req.user.name || req.user.email,
+    });
+
+    res.status(StatusCodes.CREATED).json({ message: "Amenity booking requested.", booking });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getTenantAmenityBookings = async (req, res) => {
+  try {
+    const bookings = await AmenityBooking.find({ tenant: req.user.userId })
+      .sort({ bookingDate: -1, createdAt: -1 })
+      .limit(200)
+      .populate("property", "propertyType address");
+    res.status(StatusCodes.OK).json({ bookings });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getOwnerAmenityBookings = async (req, res) => {
+  try {
+    const bookings = await AmenityBooking.find({ owner: req.user.userId })
+      .sort({ bookingDate: -1, createdAt: -1 })
+      .limit(300)
+      .populate("tenant", "name email")
+      .populate("property", "propertyType address");
+    res.status(StatusCodes.OK).json({ bookings });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updateOwnerAmenityBookingStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!["Pending", "Approved", "Rejected", "Cancelled"].includes(status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid status." });
+    }
+
+    const booking = await AmenityBooking.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user.userId },
+      { status },
+      { new: true }
+    );
+    if (!booking) return res.status(StatusCodes.NOT_FOUND).json({ message: "Amenity booking not found." });
+    res.status(StatusCodes.OK).json({ message: "Amenity booking updated.", booking });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const createTenantShortTermStay = async (req, res) => {
+  try {
+    const tenantId = req.user.userId;
+    const { platform, guestName, guestsCount, checkInDate, checkOutDate, notes } = req.body;
+    if (!guestName || !checkInDate || !checkOutDate) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "guestName, checkInDate and checkOutDate are required." });
+    }
+
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkOutDate);
+    if (checkIn >= checkOut) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "checkOutDate must be after checkInDate." });
+    }
+
+    const context = await getTenantLeaseContext(tenantId);
+    if (!context) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Active lease is required for short-term stay request." });
+    }
+
+    const stay = await ShortTermStay.create({
+      owner: context.ownerId,
+      tenant: tenantId,
+      property: context.propertyId,
+      platform: String(platform || "Airbnb").trim(),
+      guestName: String(guestName).trim(),
+      guestsCount: Number(guestsCount || 1),
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
+      notes: String(notes || "").trim(),
+    });
+
+    await createNotification({
+      recipient: context.ownerId,
+      role: "owner",
+      title: "New short-term stay request",
+      message: `${req.user.name || "Tenant"} submitted a short-term rental request for ${stay.guestName}.`,
+      type: "system",
+      actionPath: "/owner/visitor-amenities",
+      senderName: req.user.name || req.user.email,
+    });
+
+    res.status(StatusCodes.CREATED).json({ message: "Short-term stay request submitted.", stay });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getTenantShortTermStays = async (req, res) => {
+  try {
+    const stays = await ShortTermStay.find({ tenant: req.user.userId })
+      .sort({ checkInDate: -1, createdAt: -1 })
+      .limit(200)
+      .populate("property", "propertyType address");
+    res.status(StatusCodes.OK).json({ stays });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const getOwnerShortTermStays = async (req, res) => {
+  try {
+    const stays = await ShortTermStay.find({ owner: req.user.userId })
+      .sort({ checkInDate: -1, createdAt: -1 })
+      .limit(300)
+      .populate("tenant", "name email")
+      .populate("property", "propertyType address");
+    res.status(StatusCodes.OK).json({ stays });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updateOwnerShortTermStayStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!["Pending", "Approved", "Rejected", "Cancelled"].includes(status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid status." });
+    }
+
+    const stay = await ShortTermStay.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user.userId },
+      { status },
+      { new: true }
+    );
+    if (!stay) return res.status(StatusCodes.NOT_FOUND).json({ message: "Short-term stay request not found." });
+    res.status(StatusCodes.OK).json({ message: "Short-term stay updated.", stay });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
 };
 
 const mergeAggregateRows = (baseRows = [], addonRows = []) => {
@@ -1625,6 +1950,94 @@ const getOwnerVendors = async (req, res) => {
   }
 };
 
+// ── Rate Card & Contract ──────────────────────────────────────────────────────
+const updateVendorRateAndContract = async (req, res) => {
+  try {
+    const { rateCard } = req.body;
+    const vendor = await Vendor.findOne({ _id: req.params.id, managedByApp: true, isActive: true });
+    if (!vendor) return res.status(StatusCodes.NOT_FOUND).json({ message: "Vendor not found." });
+
+    if (Array.isArray(rateCard)) {
+      vendor.rateCard = rateCard.map((entry) => ({
+        category: entry.category,
+        rate: parseMoney(entry.rate),
+        unit: entry.unit || "per-job",
+        notes: String(entry.notes || "").trim(),
+      }));
+    }
+
+    await vendor.save();
+    res.status(StatusCodes.OK).json({ message: "Vendor rate card updated.", vendor });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+// ── Rate vendor ───────────────────────────────────────────────────────────────
+const rateVendor = async (req, res) => {
+  try {
+    const { score, note, requestId } = req.body;
+    const parsedScore = Number(score);
+    if (!Number.isFinite(parsedScore) || parsedScore < 1 || parsedScore > 5) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Score must be between 1 and 5." });
+    }
+
+    const vendor = await Vendor.findOne({ _id: req.params.id, managedByApp: true, isActive: true });
+    if (!vendor) return res.status(StatusCodes.NOT_FOUND).json({ message: "Vendor not found." });
+
+    // Allow one rating per owner per requestId (if provided), or just append
+    if (requestId) {
+      const existingIdx = vendor.ratings.findIndex(
+        (r) => r.owner?.toString() === req.user.userId && r.requestId?.toString() === requestId
+      );
+      if (existingIdx > -1) {
+        vendor.ratings[existingIdx].score = parsedScore;
+        vendor.ratings[existingIdx].note = String(note || "").trim();
+        vendor.ratings[existingIdx].ratedAt = new Date();
+      } else {
+        vendor.ratings.push({ owner: req.user.userId, score: parsedScore, note: String(note || "").trim(), requestId, ratedAt: new Date() });
+      }
+    } else {
+      vendor.ratings.push({ owner: req.user.userId, score: parsedScore, note: String(note || "").trim(), ratedAt: new Date() });
+    }
+
+    // Recalculate avg
+    const total = vendor.ratings.reduce((sum, r) => sum + r.score, 0);
+    vendor.avgRating = Number((total / vendor.ratings.length).toFixed(2));
+    vendor.totalRatings = vendor.ratings.length;
+    await vendor.save();
+    res.status(StatusCodes.OK).json({ message: "Rating saved.", avgRating: vendor.avgRating, totalRatings: vendor.totalRatings });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+// ── Owner vendor invoices ─────────────────────────────────────────────────────
+const getOwnerVendorInvoices = async (req, res) => {
+  try {
+    const requests = await MaintenanceRequest.find({
+      owner: req.user.userId,
+      "vendorPaymentRequest.status": { $in: ["Pending", "Paid"] },
+    })
+      .populate("property", "propertyType address")
+      .populate("assignedVendor", "name phone email specializations avgRating")
+      .sort({ "vendorPaymentRequest.raisedAt": -1 });
+
+    const invoices = requests.map((r) => ({
+      requestId: r._id,
+      category: r.category,
+      property: r.property,
+      vendor: r.assignedVendor,
+      workCompletedAt: r.workCompletedAt,
+      invoice: r.vendorPaymentRequest,
+    }));
+
+    res.status(StatusCodes.OK).json({ invoices });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 const assignVendorToMaintenanceRequest = async (req, res) => {
   try {
     const { vendorId } = req.body;
@@ -2195,7 +2608,7 @@ const getOwnerDashboard = async (req, res) => {
 
 const createPropertyInquiry = async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, inquiryType, shortStayDetails } = req.body;
     const property = await Property.findOne({ _id: req.params.id, isActive: true }).populate("owner", "name email");
 
     if (!property) {
@@ -2206,16 +2619,43 @@ const createPropertyInquiry = async (req, res) => {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "You cannot inquire about your own property." });
     }
 
-    const existing = await PropertyInquiry.findOne({ property: property._id, inquirer: req.user.userId });
+    const normalizedType = inquiryType === "ShortTermRental" ? "ShortTermRental" : "Viewing";
+    const existing = await PropertyInquiry.findOne({ property: property._id, inquirer: req.user.userId, inquiryType: normalizedType });
     if (existing) {
-      return res.status(StatusCodes.CONFLICT).json({ message: "You have already submitted an inquiry for this property." });
+      return res.status(StatusCodes.CONFLICT).json({ message: `You have already submitted a ${normalizedType === "ShortTermRental" ? "short-term rental" : "viewing"} inquiry for this property.` });
+    }
+
+    let normalizedShortStay = undefined;
+    if (normalizedType === "ShortTermRental") {
+      const checkInDate = shortStayDetails?.checkInDate ? new Date(shortStayDetails.checkInDate) : null;
+      const checkOutDate = shortStayDetails?.checkOutDate ? new Date(shortStayDetails.checkOutDate) : null;
+      const guestsCount = Number(shortStayDetails?.guestsCount || 1);
+
+      if (checkInDate && Number.isNaN(checkInDate.getTime())) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid check-in date." });
+      }
+      if (checkOutDate && Number.isNaN(checkOutDate.getTime())) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid check-out date." });
+      }
+      if (checkInDate && checkOutDate && checkInDate >= checkOutDate) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Check-out date must be after check-in date." });
+      }
+
+      normalizedShortStay = {
+        platform: String(shortStayDetails?.platform || "Airbnb").trim(),
+        checkInDate: checkInDate || null,
+        checkOutDate: checkOutDate || null,
+        guestsCount: Number.isFinite(guestsCount) && guestsCount > 0 ? guestsCount : 1,
+      };
     }
 
     const inquiry = await PropertyInquiry.create({
       property: property._id,
       owner: property.owner?._id,
       inquirer: req.user.userId,
+      inquiryType: normalizedType,
       message: (message || "").trim(),
+      shortStayDetails: normalizedShortStay,
     });
 
     // Notify owner of new inquiry
@@ -2223,11 +2663,14 @@ const createPropertyInquiry = async (req, res) => {
       recipient: property.owner?._id,
       role: "owner",
       title: "New property inquiry",
-      message: `${req.user.name || "A user"} is interested in your property in ${property.address?.city || "your listing"}.`,
+      message:
+        normalizedType === "ShortTermRental"
+          ? `${req.user.name || "A user"} requested short-term rental for your property in ${property.address?.city || "your listing"}.`
+          : `${req.user.name || "A user"} is interested in your property in ${property.address?.city || "your listing"}.`,
       type: "inquiry",
       actionPath: "/owner/inquiries",
       senderName: req.user.name || req.user.email || "Tenant",
-      metadata: { inquiryId: inquiry._id, propertyId: property._id },
+      metadata: { inquiryId: inquiry._id, propertyId: property._id, inquiryType: normalizedType },
     });
 
     // Notify tenant of their submission confirmation
@@ -2235,10 +2678,13 @@ const createPropertyInquiry = async (req, res) => {
       recipient: req.user.userId,
       role: "tenant",
       title: "Inquiry submitted",
-      message: `Your inquiry for ${property.propertyType} in ${property.address?.city || "property"} has been sent to the owner.`,
+      message:
+        normalizedType === "ShortTermRental"
+          ? `Your short-term rental request for ${property.propertyType} in ${property.address?.city || "property"} has been sent to the owner.`
+          : `Your inquiry for ${property.propertyType} in ${property.address?.city || "property"} has been sent to the owner.`,
       type: "inquiry",
       actionPath: "/tenant/inquiries",
-      metadata: { inquiryId: inquiry._id, propertyId: property._id },
+      metadata: { inquiryId: inquiry._id, propertyId: property._id, inquiryType: normalizedType },
     });
 
     await sendMailEvent({
@@ -2250,6 +2696,11 @@ const createPropertyInquiry = async (req, res) => {
       highlights: [
         `Property: ${property.propertyType} in ${property.address?.city || "N/A"}`,
         `Interested user: ${req.user.name || req.user.email || "N/A"}`,
+        normalizedType === "ShortTermRental" && normalizedShortStay
+          ? normalizedShortStay.checkInDate && normalizedShortStay.checkOutDate
+            ? `Stay: ${new Date(normalizedShortStay.checkInDate).toLocaleDateString()} to ${new Date(normalizedShortStay.checkOutDate).toLocaleDateString()} (${normalizedShortStay.guestsCount} guest${normalizedShortStay.guestsCount === 1 ? "" : "s"})`
+            : `Stay request: ${normalizedShortStay.platform || "Short-term"} (${normalizedShortStay.guestsCount} guest${normalizedShortStay.guestsCount === 1 ? "" : "s"})`
+          : null,
         message ? `Message: ${message}` : null,
       ],
       actionLabel: "Open Owner Dashboard",
@@ -2285,6 +2736,11 @@ const updateOwnerInquiryStatus = async (req, res) => {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid inquiry status." });
     }
 
+    const existingInquiry = await PropertyInquiry.findOne({ _id: req.params.id, owner: req.user.userId });
+    if (!existingInquiry) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Inquiry not found." });
+    }
+
     const updatePayload = { status };
 
     if (status === "Visit Planned") {
@@ -2316,8 +2772,48 @@ const updateOwnerInquiryStatus = async (req, res) => {
       .populate("property", "propertyType address status numberOfRooms")
       .populate("inquirer", "name email phone");
 
-    if (!inquiry) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: "Inquiry not found." });
+    // Owner-only visitor logs are driven by inquiry visit planning/completion.
+    if (status === "Visit Planned") {
+      await GuestLog.findOneAndUpdate(
+        { sourceInquiry: inquiry._id, owner: req.user.userId },
+        {
+          owner: req.user.userId,
+          sourceInquiry: inquiry._id,
+          tenant: inquiry.inquirer?._id,
+          property: inquiry.property?._id,
+          inquiryStatusBeforeVisit: existingInquiry.status || "New",
+          visitorName: inquiry.inquirer?.name || "Visitor",
+          visitorPhone: inquiry.inquirer?.phone || "",
+          purpose: inquiry.inquiryType === "ShortTermRental" ? "Short-term rental visit" : "Property viewing",
+          visitDate: inquiry.visitScheduledAt || new Date(),
+          checkInAt: null,
+          checkOutAt: null,
+          notes: inquiry.visitNote || inquiry.message || "",
+          status: "Expected",
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    if (status === "Visited") {
+      await GuestLog.findOneAndUpdate(
+        { sourceInquiry: inquiry._id, owner: req.user.userId },
+        {
+          owner: req.user.userId,
+          sourceInquiry: inquiry._id,
+          tenant: inquiry.inquirer?._id,
+          property: inquiry.property?._id,
+          visitorName: inquiry.inquirer?.name || "Visitor",
+          visitorPhone: inquiry.inquirer?.phone || "",
+          purpose: inquiry.inquiryType === "ShortTermRental" ? "Short-term rental visit" : "Property viewing",
+          visitDate: inquiry.visitScheduledAt || inquiry.visitedAt || new Date(),
+          checkInAt: inquiry.visitScheduledAt || inquiry.visitedAt || new Date(),
+          checkOutAt: inquiry.visitedAt || new Date(),
+          notes: inquiry.ownerFollowUpNote || inquiry.visitNote || inquiry.message || "",
+          status: "Checked-Out",
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
     }
 
     const propertyLabel = `${inquiry.property?.propertyType || "Property"} in ${inquiry.property?.address?.city || "your selected area"}`;
@@ -4534,6 +5030,418 @@ const downloadTaxReport = async (req, res) => {
   }
 };
 
+const downloadOwnerStatement = async (req, res) => {
+  try {
+    const ownerId = req.user.userId;
+    const ownerOid = toObjectId(ownerId);
+    const { fromDate, toDate } = req.query;
+
+    const now = new Date();
+    const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+    const defaultTo = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const startDate = fromDate ? new Date(fromDate) : defaultFrom;
+    const endDate = toDate ? new Date(toDate) : defaultTo;
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid fromDate or toDate." });
+    }
+    if (startDate > endDate) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "fromDate cannot be after toDate." });
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    const owner = await User.findById(ownerId, "name email phone");
+    const ytdStart = new Date(endDate.getFullYear(), 0, 1);
+    const previousTo = new Date(startDate);
+    previousTo.setMilliseconds(-1);
+
+    const [rentPayments, expenses, previousRent, previousExpenses, ytdRent, ytdExpenses] = await Promise.all([
+      RentPayment.find({ owner: ownerOid, status: "Paid", paidDate: { $gte: startDate, $lte: endDate } })
+        .populate("property", "propertyType address")
+        .populate("tenant", "name email")
+        .sort({ paidDate: 1 }),
+      Expense.find({ owner: ownerOid, date: { $gte: startDate, $lte: endDate } })
+        .populate("property", "propertyType address")
+        .sort({ date: 1 }),
+      RentPayment.find({ owner: ownerOid, status: "Paid", paidDate: { $lt: startDate } }),
+      Expense.find({ owner: ownerOid, date: { $lt: startDate } }),
+      RentPayment.find({ owner: ownerOid, status: "Paid", paidDate: { $gte: ytdStart, $lte: endDate } }),
+      Expense.find({ owner: ownerOid, date: { $gte: ytdStart, $lte: endDate } }),
+    ]);
+
+    const missingMaintenance = await getMissingVendorMaintenanceExpenses({ ownerOid, fyStart: startDate, fyEnd: endDate, persist: true });
+    const reportExpenses = [...expenses, ...missingMaintenance.entries].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const totalIncome = rentPayments.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const totalExpenses = reportExpenses.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const netAmount = totalIncome - totalExpenses;
+
+    const previousIncome = previousRent.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const previousExpenseTotal = previousExpenses.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const previousBalance = previousIncome - previousExpenseTotal;
+
+    const ytdIncome = ytdRent.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const ytdExpenseTotal = ytdExpenses.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const ytdNet = ytdIncome - ytdExpenseTotal;
+
+    // Keep owner adjustments explicit in statement; draw defaults to net period amount.
+    const ownerContributionsMtd = 0;
+    const ownerContributionsYtd = 0;
+    const ownerDrawsMtd = netAmount;
+    const ownerDrawsYtd = ytdNet;
+    const totalAdjustmentsMtd = ownerContributionsMtd - ownerDrawsMtd;
+    const totalAdjustmentsYtd = ownerContributionsYtd - ownerDrawsYtd;
+
+    const endingBalance = previousBalance + netAmount + totalAdjustmentsMtd;
+    const currentBalance = endingBalance;
+    const unpaidBills = 0;
+    const effectiveBalance = currentBalance - unpaidBills;
+    const portfolioMinimum = 0;
+
+    const byProperty = {};
+    rentPayments.forEach((p) => {
+      const key = String(p.property?._id || "unknown");
+      const label = `${p.property?.propertyType || "Property"} - ${p.property?.address?.city || "N/A"}`;
+      if (!byProperty[key]) byProperty[key] = { label, total: 0, count: 0 };
+      byProperty[key].total += Number(p.amount || 0);
+      byProperty[key].count += 1;
+    });
+
+    const transactions = [
+      ...rentPayments.map((p) => ({
+        date: p.paidDate || p.updatedAt || p.createdAt,
+        type: "Rent Received",
+        property: `${p.property?.propertyType || "Property"} - ${p.property?.address?.city || "N/A"}`,
+        reference: p.tenant?.name || "Tenant",
+        credit: Number(p.amount || 0),
+        debit: 0,
+      })),
+      ...reportExpenses.map((e) => ({
+        date: e.date || e.updatedAt || e.createdAt,
+        type: "Expense",
+        property: `${e.property?.propertyType || "General"} - ${e.property?.address?.city || "N/A"}`,
+        reference: e.category || "Expense",
+        credit: 0,
+        debit: Number(e.amount || 0),
+      })),
+    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const toLabel = (value) => new Date(value).toLocaleDateString("en-US");
+    const toFileDate = (value) => {
+      const dt = new Date(value);
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      const yyyy = dt.getFullYear();
+      return `${mm}_${dd}_${yyyy}`;
+    };
+
+    const monthShort = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+    const getIncomeLabel = (payment) => {
+      const notes = String(payment?.notes || "").toLowerCase();
+      if (notes.includes("pet")) return "Other Income:Pet Rent";
+      if (notes.includes("water")) return "Other Income:Water Income";
+      if (Number(payment.lateFeeAmount || 0) > 0) return "Other Income:Late Fee";
+      return "Rental Income:Rent";
+    };
+
+    const getExpenseLabel = (expense) => `${expense.category || "Other"}:${expense.title || "Expense"}`;
+
+    const aggregateCategory = (items, getLabel, amountField, from, to) => {
+      const totals = {};
+      items.forEach((item) => {
+        const dt = new Date(item.date || item.paidDate || item.createdAt);
+        if (dt < from || dt > to) return;
+        const key = getLabel(item);
+        totals[key] = (totals[key] || 0) + Number(item[amountField] || 0);
+      });
+      return totals;
+    };
+
+    const incomeMtdMap = aggregateCategory(rentPayments, getIncomeLabel, "amount", startDate, endDate);
+    const incomeYtdMap = aggregateCategory(ytdRent, getIncomeLabel, "amount", ytdStart, endDate);
+    const expenseMtdMap = aggregateCategory(reportExpenses, getExpenseLabel, "amount", startDate, endDate);
+    const expenseYtdMap = aggregateCategory(ytdExpenses, getExpenseLabel, "amount", ytdStart, endDate);
+
+    const incomeLabels = Array.from(new Set([...Object.keys(incomeMtdMap), ...Object.keys(incomeYtdMap)])).sort();
+    const expenseLabels = Array.from(new Set([...Object.keys(expenseMtdMap), ...Object.keys(expenseYtdMap)])).sort();
+
+    const filename = `Owner_Statement_(${toFileDate(startDate)}_-_${toFileDate(endDate)}).pdf`;
+
+    const doc = new PDFDocument({ margin: 45, size: "A4", layout: "landscape", bufferPages: true });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    const contentWidth = doc.page.width - 90;
+    let y = 45;
+
+    const ensureSpace = (height) => {
+      if (y + height > doc.page.height - 55) {
+        doc.addPage();
+        y = 45;
+      }
+    };
+
+    const sectionHeader = (title) => {
+      ensureSpace(28);
+      doc.roundedRect(45, y, contentWidth, 22, 5).fill("#0f4c81");
+      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(10.5).text(title, 56, y + 6);
+      y += 30;
+    };
+
+    const tableRow = (label, value, shade) => {
+      ensureSpace(18);
+      if (shade) doc.rect(45, y, contentWidth, 16).fill("#f8fafc");
+      doc.fillColor("#334155").font("Helvetica").fontSize(9).text(label, 55, y + 4, { width: contentWidth * 0.65 });
+      doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(9).text(value, 55 + contentWidth * 0.65, y + 4, { width: contentWidth * 0.3, align: "right" });
+      doc.rect(45, y, contentWidth, 16).stroke("#e2e8f0");
+      y += 18;
+    };
+
+    const miniSummaryRows = [
+      ["Previous Balance", formatCurrency(previousBalance)],
+      ["Ending Balance", formatCurrency(endingBalance)],
+      ["Current Balance", formatCurrency(currentBalance)],
+      ["Unpaid Bills", formatCurrency(unpaidBills)],
+      ["Effective Balance", formatCurrency(effectiveBalance)],
+      ["Portfolio Minimum", formatCurrency(portfolioMinimum)],
+    ];
+
+    const renderMtdYtdRows = (title, rows, totalMtd, totalYtd) => {
+      sectionHeader(title);
+      ensureSpace(20);
+      doc.roundedRect(45, y, contentWidth, 16, 3).fill("#e2e8f0");
+      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(8.5)
+        .text("Category", 55, y + 4, { width: contentWidth * 0.55 })
+        .text("Month-To-Date", 330, y + 4, { width: 100, align: "right" })
+        .text("Year-To-Date", 440, y + 4, { width: 90, align: "right" });
+      y += 18;
+
+      rows.forEach((row, i) => {
+        ensureSpace(16);
+        if (i % 2 === 0) doc.rect(45, y, contentWidth, 16).fill("#f8fafc");
+        doc.fillColor("#334155").font("Helvetica").fontSize(8.5)
+          .text(row.label, 55, y + 4, { width: contentWidth * 0.55 })
+          .text(formatCurrency(row.mtd), 330, y + 4, { width: 100, align: "right" })
+          .text(formatCurrency(row.ytd), 440, y + 4, { width: 90, align: "right" });
+        doc.rect(45, y, contentWidth, 16).stroke("#e2e8f0");
+        y += 18;
+      });
+
+      ensureSpace(18);
+      doc.roundedRect(45, y, contentWidth, 16, 3).fill("#eef2ff");
+      doc.fillColor("#1e3a8a").font("Helvetica-Bold").fontSize(8.5)
+        .text(`Total ${title}`, 55, y + 4, { width: contentWidth * 0.55 })
+        .text(formatCurrency(totalMtd), 330, y + 4, { width: 100, align: "right" })
+        .text(formatCurrency(totalYtd), 440, y + 4, { width: 90, align: "right" });
+      y += 22;
+    };
+
+    // Header + Addresses
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(12).text(owner?.name || "Owner", 45, y);
+    doc.fillColor("#374151").font("Helvetica").fontSize(9)
+      .text(owner?.email || "", 45, y + 14)
+      .text(owner?.phone ? `ph. ${owner.phone}` : "", 45, y + 26);
+    y += 40;
+
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(16).text("OWNER STATEMENT", 45, y);
+    doc.fillColor("#4b5563").font("Helvetica").fontSize(10).text(`Report Period: ${toLabel(startDate)} - ${toLabel(endDate)}`, 45, y + 18);
+    y += 38;
+
+    sectionHeader("PORTFOLIO SUMMARY");
+    miniSummaryRows.forEach((row, idx) => tableRow(row[0], row[1], idx % 2 === 0));
+
+    ensureSpace(18);
+    doc.fillColor("#475569").font("Helvetica-Bold").fontSize(8.5)
+      .text("Month-To-Date", 330, y, { width: 100, align: "right" })
+      .text("Year-To-Date", 440, y, { width: 90, align: "right" });
+    y += 14;
+
+    sectionHeader(`Beginning Balance as of ${toLabel(startDate)}`);
+    tableRow("Beginning Balance", formatCurrency(previousBalance), false);
+
+    const incomeRows = incomeLabels.map((label) => ({
+      label,
+      mtd: Number(incomeMtdMap[label] || 0),
+      ytd: Number(incomeYtdMap[label] || 0),
+    }));
+    const expenseRows = expenseLabels.map((label) => ({
+      label,
+      mtd: Number(expenseMtdMap[label] || 0),
+      ytd: Number(expenseYtdMap[label] || 0),
+    }));
+
+    renderMtdYtdRows("Income", incomeRows, totalIncome, ytdIncome);
+    renderMtdYtdRows("Expense", expenseRows, totalExpenses, ytdExpenseTotal);
+
+    sectionHeader("NET INCOME");
+    tableRow("Net Income", `${formatCurrency(netAmount)} (MTD) | ${formatCurrency(ytdNet)} (YTD)`, false);
+
+    sectionHeader("ADJUSTMENTS");
+    tableRow("Owner Contributions", `${formatCurrency(ownerContributionsMtd)} (MTD) | ${formatCurrency(ownerContributionsYtd)} (YTD)`, false);
+    tableRow("Owner Draws", `${formatCurrency(ownerDrawsMtd)} (MTD) | ${formatCurrency(ownerDrawsYtd)} (YTD)`, true);
+    tableRow("Total Adjustments", `${formatCurrency(totalAdjustmentsMtd)} (MTD) | ${formatCurrency(totalAdjustmentsYtd)} (YTD)`, false);
+
+    sectionHeader(`Ending Balance as of ${toLabel(endDate)}`);
+    tableRow("Ending Balance", formatCurrency(endingBalance), false);
+
+    // Property summary
+    sectionHeader("PROPERTY SUMMARY");
+    const propertyRows = Object.values(byProperty);
+    if (propertyRows.length === 0) {
+      doc.fillColor("#64748b").font("Helvetica").fontSize(9).text("No property activity in selected date range.", 55, y);
+      y += 16;
+    } else {
+      propertyRows.forEach((row, index) => {
+        tableRow(`${row.label} (${row.count} payment${row.count === 1 ? "" : "s"})`, formatCurrency(row.total), index % 2 === 0);
+      });
+      tableRow("Escrow Account Balance Held", formatCurrency(currentBalance), true);
+      tableRow("Unpaid Vendor Bills", formatCurrency(unpaidBills), false);
+    }
+
+    const compactCurrency = (value) => Number(value || 0).toFixed(2);
+
+    // Transaction ledger
+    y += 8;
+    sectionHeader("TRANSACTION DETAIL");
+    ensureSpace(20);
+    doc.roundedRect(45, y, contentWidth, 16, 3).fill("#e2e8f0");
+    const tDateX = 50;
+    const tTypeX = 110;
+    const tRefX = 172;
+    const tCreditX = 352;
+    const tDebitX = 422;
+    const tBalanceX = 492;
+    doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(8)
+      .text("Date", tDateX, y + 4, { width: 56 })
+      .text("Type", tTypeX, y + 4, { width: 58 })
+      .text("Reference", tRefX, y + 4, { width: 176 })
+      .text("Credit", tCreditX, y + 4, { width: 66, align: "right" })
+      .text("Debit", tDebitX, y + 4, { width: 66, align: "right" })
+      .text("Balance", tBalanceX, y + 4, { width: 54, align: "right" });
+    y += 18;
+
+    let runningBalance = previousBalance;
+    if (transactions.length === 0) {
+      doc.fillColor("#64748b").font("Helvetica").fontSize(9).text("No transactions for selected period.", 55, y);
+      y += 16;
+    } else {
+      transactions.forEach((txn, index) => {
+        ensureSpace(16);
+        runningBalance += txn.credit - txn.debit;
+        if (index % 2 === 0) doc.rect(45, y, contentWidth, 16).fill("#f8fafc");
+        doc.fillColor("#334155").font("Helvetica").fontSize(8)
+          .text(new Date(txn.date).toLocaleDateString("en-US"), tDateX, y + 4, { width: 56 })
+          .text(txn.type, tTypeX, y + 4, { width: 58 })
+          .text(`${txn.reference} | ${txn.property}`, tRefX, y + 4, { width: 176, ellipsis: true })
+          .text(txn.credit ? compactCurrency(txn.credit) : "-", tCreditX, y + 4, { width: 66, align: "right" })
+          .text(txn.debit ? compactCurrency(txn.debit) : "-", tDebitX, y + 4, { width: 66, align: "right" })
+          .text(compactCurrency(runningBalance), tBalanceX, y + 4, { width: 54, align: "right" });
+        doc.rect(45, y, contentWidth, 16).stroke("#e2e8f0");
+        y += 18;
+      });
+    }
+
+    y += 8;
+    ensureSpace(34);
+    doc.roundedRect(45, y, contentWidth, 24, 5).fill("#eff6ff");
+    doc.fillColor("#1e3a8a").font("Helvetica-Bold").fontSize(10)
+      .text("Ending Balance for Statement Period", 55, y + 7)
+      .text(compactCurrency(runningBalance), 420, y + 7, { width: 120, align: "right" });
+    y += 32;
+
+    // Operating statement by month (JAN-DEC) with same page width as all other sections
+    ensureSpace(40);
+    sectionHeader("OPERATING STATEMENT (JAN-DEC)");
+    const opLeft = 45;
+    const opWidth = contentWidth;
+    const opCatWidth = 128;
+    const opColWidth = (opWidth - opCatWidth) / 13; // 12 months + total
+
+    const renderOperatingHeader = () => {
+      ensureSpace(18);
+      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(7.2);
+      doc.text("Category", opLeft + 6, y + 3, { width: opCatWidth - 10 });
+      monthShort.forEach((m, i) => {
+        doc.text(m, opLeft + opCatWidth + i * opColWidth, y + 3, { width: opColWidth - 2, align: "right" });
+      });
+      doc.text("Total", opLeft + opCatWidth + 12 * opColWidth, y + 3, { width: opColWidth - 2, align: "right" });
+      doc.rect(opLeft, y, opWidth, 14).stroke("#cbd5e1");
+      y += 16;
+    };
+
+    renderOperatingHeader();
+
+    const renderMonthlyRow = (label, items, amountField, getLabel, rowTone = "#334155") => {
+      const monthTotals = new Array(12).fill(0);
+      items.forEach((item) => {
+        const dt = new Date(item.date || item.paidDate || item.createdAt);
+        if (dt < ytdStart || dt > endDate) return;
+        if (getLabel(item) !== label) return;
+        monthTotals[dt.getMonth()] += Number(item[amountField] || 0);
+      });
+      const total = monthTotals.reduce((s, v) => s + v, 0);
+      if (y + 14 > doc.page.height - 55) {
+        doc.addPage();
+        y = 45;
+        sectionHeader("OPERATING STATEMENT (JAN-DEC)");
+        renderOperatingHeader();
+      }
+      doc.fillColor(rowTone).font("Helvetica").fontSize(7.2)
+        .text(label, opLeft + 6, y + 3, { width: opCatWidth - 10, ellipsis: true });
+      monthTotals.forEach((value, i) => {
+        doc.text(compactCurrency(value), opLeft + opCatWidth + i * opColWidth, y + 3, { width: opColWidth - 2, align: "right" });
+      });
+      doc.font("Helvetica-Bold").text(compactCurrency(total), opLeft + opCatWidth + 12 * opColWidth, y + 3, { width: opColWidth - 2, align: "right" });
+      doc.rect(opLeft, y, opWidth, 14).stroke("#e2e8f0");
+      y += 14;
+    };
+
+    const operatingIncomeLabels = Array.from(new Set(ytdRent.map((r) => getIncomeLabel(r)))).sort();
+    const operatingExpenseLabels = Array.from(new Set(ytdExpenses.map((e) => getExpenseLabel(e)))).sort();
+
+    if (operatingIncomeLabels.length > 0) {
+      if (y + 14 > doc.page.height - 55) {
+        doc.addPage();
+        y = 45;
+        sectionHeader("OPERATING STATEMENT (JAN-DEC)");
+        renderOperatingHeader();
+      }
+      doc.fillColor("#0f766e").font("Helvetica-Bold").fontSize(8).text("Income", opLeft + 6, y + 3);
+      y += 14;
+      operatingIncomeLabels.forEach((label) => renderMonthlyRow(label, ytdRent, "amount", getIncomeLabel, "#0f172a"));
+    }
+
+    if (operatingExpenseLabels.length > 0) {
+      if (y + 14 > doc.page.height - 55) {
+        doc.addPage();
+        y = 45;
+        sectionHeader("OPERATING STATEMENT (JAN-DEC)");
+        renderOperatingHeader();
+      }
+      doc.fillColor("#9f1239").font("Helvetica-Bold").fontSize(8).text("Expense", opLeft + 6, y + 3);
+      y += 14;
+      operatingExpenseLabels.forEach((label) => renderMonthlyRow(label, ytdExpenses, "amount", getExpenseLabel, "#1f2937"));
+    }
+
+    if (y + 24 > doc.page.height - 55) {
+      doc.addPage();
+      y = 45;
+    }
+    doc.fillColor("#64748b").font("Helvetica").fontSize(8.2)
+      .text("This statement is system-generated from recorded transactions and intended for operational and accounting reference.", opLeft, y)
+      .text("Please verify with bank ledger and accountant records before statutory filings.", opLeft, y + 11);
+
+    doc.end();
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FEATURE: Digital Rent Agreement PDF
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5491,6 +6399,9 @@ module.exports = {
   addCommentToRequest,
   // Owner – Vendors
   getOwnerVendors,
+  updateVendorRateAndContract,
+  rateVendor,
+  getOwnerVendorInvoices,
   assignVendorToMaintenanceRequest,
   decideVendorQuote,
   completeVendorPayment,
@@ -5553,9 +6464,23 @@ module.exports = {
   getOwnerExpenses,
   updateExpense,
   deleteExpense,
+  // Visitor / Amenities / Short-term Stay
+  createTenantGuestLog,
+  getTenantGuestLogs,
+  getOwnerGuestLogs,
+  updateOwnerGuestLogStatus,
+  createTenantAmenityBooking,
+  getTenantAmenityBookings,
+  getOwnerAmenityBookings,
+  updateOwnerAmenityBookingStatus,
+  createTenantShortTermStay,
+  getTenantShortTermStays,
+  getOwnerShortTermStays,
+  updateOwnerShortTermStayStatus,
   // Advanced Analytics & Tax
   getAdvancedAnalytics,
   downloadTaxReport,
+  downloadOwnerStatement,
   // Rent Agreement
   downloadRentAgreement,
   // Reviews

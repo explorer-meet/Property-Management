@@ -156,6 +156,24 @@ const HERO_HIGHLIGHTS = [
   },
 ];
 
+const MARKET_EXPECTATIONS = [
+  "Unified owner, tenant, and vendor communication",
+  "Automated rent collection and reminders",
+  "Maintenance workflow with status visibility",
+  "Portfolio-grade accounting and statements",
+  "Role-specific portals with secure access",
+  "Fast onboarding with minimal setup friction",
+];
+
+const PROP_MANAGER_EDGE = [
+  "Owner, Tenant, and Vendor dashboards in one system",
+  "End-to-end inquiry pipeline with follow-up tracking",
+  "Owner statement and tax-ready report downloads",
+  "Compliance document tracking and verification",
+  "Vacancy, lease renewals, and move-out operations together",
+  "Modern UI focused on quick daily actions, not clutter",
+];
+
 const getStoredUser = () => {
   try {
     return JSON.parse(localStorage.getItem("pms_user") || "null");
@@ -172,7 +190,7 @@ const LandingPage = () => {
   const [publicProperties, setPublicProperties] = useState([]);
   const [propertyLoading, setPropertyLoading] = useState(true);
   const [authPromptProperty, setAuthPromptProperty] = useState(null);
-  const [submittingInquiryId, setSubmittingInquiryId] = useState("");
+  const [submittingInquiryKey, setSubmittingInquiryKey] = useState("");
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [heroHighlightIndex, setHeroHighlightIndex] = useState(0);
   const [testimonialIndex, setTestimonialIndex] = useState(0);
@@ -263,7 +281,7 @@ const LandingPage = () => {
     fetchPublicProperties();
   }, []);
 
-  const handleInterested = async (property) => {
+  const handleInterested = async (property, mode = "Viewing") => {
     const token = localStorage.getItem("pms_token");
     let user = null;
 
@@ -275,7 +293,11 @@ const LandingPage = () => {
 
     const pendingPayload = {
       propertyId: property._id,
-      message: `I am interested in your ${property.propertyType} listing in ${property?.address?.city || "this area"}.`,
+      inquiryType: mode,
+      message:
+        mode === "ShortTermRental"
+          ? `I want to request this property for a short-term rental stay in ${property?.address?.city || "this area"}.`
+          : `I am interested in your ${property.propertyType} listing in ${property?.address?.city || "this area"}.`,
       savedAt: new Date().toISOString(),
     };
 
@@ -286,14 +308,18 @@ const LandingPage = () => {
     }
 
     try {
-      setSubmittingInquiryId(property._id);
-      await api.post(`/properties/${property._id}/inquiries`, { message: pendingPayload.message });
-      toast.success("Inquiry sent to property owner.");
+      const submitKey = `${property._id}:${mode}`;
+      setSubmittingInquiryKey(submitKey);
+      await api.post(`/properties/${property._id}/inquiries`, {
+        message: pendingPayload.message,
+        inquiryType: pendingPayload.inquiryType,
+      });
+      toast.success(mode === "ShortTermRental" ? "Short-term rental request sent to owner." : "Inquiry sent to property owner.");
     } catch (err) {
       const errorMessage = err?.response?.data?.message || "Unable to submit inquiry.";
       toast.error(errorMessage);
     } finally {
-      setSubmittingInquiryId("");
+      setSubmittingInquiryKey("");
     }
   };
 
@@ -352,6 +378,10 @@ const LandingPage = () => {
               How it works
               <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
             </a>
+            <a href="#compare" className={`group relative rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${scrolled ? "text-slate-700" : "text-white hover:text-blue-700"}`}>
+              Why Us
+              <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
+            </a>
             <a href="#testimonials" className={`group relative rounded-xl px-3 py-2 text-sm font-bold transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${scrolled ? "text-slate-700" : "text-white hover:text-blue-700"}`}>
               Reviews
               <span className="absolute inset-x-3 -bottom-0.5 h-0.5 scale-x-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-transform duration-200 group-hover:scale-x-100" />
@@ -405,6 +435,7 @@ const LandingPage = () => {
             <a href="#features" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Features</a>
             <a href="#browse-properties" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Browse Properties</a>
             <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">How it works</a>
+            <a href="#compare" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Why Us</a>
             <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Reviews</a>
             <a href="#vendor-program" onClick={() => setMobileMenuOpen(false)} className="block text-sm font-medium text-gray-700 py-2">Vendor Program</a>
             <div className="flex gap-3 pt-2">
@@ -610,6 +641,63 @@ const LandingPage = () => {
           <StatItem value={98} suffix="%" label="Rent Collected On-Time" />
           <StatItem value={500} suffix="+" label="Maintenance Resolved" />
         </div>
+        <div className="max-w-6xl mx-auto mt-10 px-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              "Single-Family",
+              "Multi-Unit",
+              "Commercial",
+              "Mixed Portfolio",
+            ].map((segment) => (
+              <div key={segment} className="rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-blue-100">
+                {segment}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── MARKET COMPARISON ── */}
+      <section id="compare" className="py-24 bg-gradient-to-b from-white to-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <span className="text-sm font-semibold text-blue-600 uppercase tracking-widest">Market Benchmarks</span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-3">What Top Platforms Do and How PropManager Competes</h2>
+            <p className="text-gray-500 mt-3 max-w-3xl mx-auto text-base">
+              Based on common patterns across leading property-management products, these are the capabilities operators expect before they switch.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Market Standard</p>
+              <h3 className="mt-2 text-xl font-extrabold text-slate-900">Must-Have Capabilities</h3>
+              <div className="mt-5 space-y-2.5">
+                {MARKET_EXPECTATIONS.map((item) => (
+                  <p key={item} className="inline-flex items-start gap-2 text-sm text-slate-700">
+                    <CheckCircle2 size={16} className="text-slate-400 mt-0.5 shrink-0" /> {item}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-6 shadow-[0_14px_32px_rgba(37,99,235,0.14)]">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">PropManager Advantage</p>
+              <h3 className="mt-2 text-xl font-extrabold text-slate-900">Built to Win More Owners</h3>
+              <div className="mt-5 space-y-2.5">
+                {PROP_MANAGER_EDGE.map((item) => (
+                  <p key={item} className="inline-flex items-start gap-2 text-sm text-slate-800">
+                    <CheckCircle2 size={16} className="text-blue-600 mt-0.5 shrink-0" /> {item}
+                  </p>
+                ))}
+              </div>
+              <div className="mt-6 rounded-xl border border-blue-100 bg-white/80 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">Conversion Focus</p>
+                <p className="mt-1 text-sm text-slate-600">Use faster onboarding, clear owner reporting, and visible operational control to close more management clients.</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ── BROWSE PROPERTIES CAROUSEL ── */}
@@ -685,14 +773,24 @@ const LandingPage = () => {
                           <p className="flex items-center gap-1.5"><MapPin size={12} className="text-blue-400" />{property?.address?.street || "Address not available"}</p>
                           <p>Rooms: <span className="font-semibold text-gray-700">{property.numberOfRooms || 1}</span> &nbsp;|&nbsp; Listed by: <span className="font-semibold text-gray-700">{property?.owner?.name || "Owner"}</span></p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleInterested(property)}
-                          disabled={submittingInquiryId === property._id}
-                          className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-60"
-                        >
-                          {submittingInquiryId === property._id ? "Submitting..." : "I'm Interested"}
-                        </button>
+                        <div className="mt-4 grid grid-cols-1 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleInterested(property, "Viewing")}
+                            disabled={submittingInquiryKey.startsWith(`${property._id}:`)}
+                            className="w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-60"
+                          >
+                            {submittingInquiryKey === `${property._id}:Viewing` ? "Submitting..." : "I'm Interested"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleInterested(property, "ShortTermRental")}
+                            disabled={submittingInquiryKey.startsWith(`${property._id}:`)}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-60"
+                          >
+                            {submittingInquiryKey === `${property._id}:ShortTermRental` ? "Submitting..." : "Request Short-Term Rental"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}

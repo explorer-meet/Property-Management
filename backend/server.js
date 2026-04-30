@@ -6,6 +6,7 @@ const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./config/swagger");
 const connectDB = require("./config/config");
 const propertyRoutes = require("./routes/propertyRoutes");
+const { registerScheduledJobs } = require("./services/schedulerService");
 
 const app = express();
 
@@ -66,6 +67,7 @@ const start = async () => {
     }
 
     console.log("Database connected.");
+    registerScheduledJobs();
 
     const port = process.env.PORT || 5000;
     const server = app.listen(port, "0.0.0.0", () => {

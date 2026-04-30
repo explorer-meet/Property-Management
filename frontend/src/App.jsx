@@ -43,6 +43,7 @@ import OwnerVendors from "./pages/owner/OwnerVendors";
 import Expenses from "./pages/owner/Expenses";
 import AdvancedAnalytics from "./pages/owner/AdvancedAnalytics";
 import PropertyReviews from "./pages/owner/PropertyReviews";
+import OwnerVisitorAmenities from "./pages/owner/OwnerVisitorAmenities";
 
 // Tenant
 import TenantDashboard from "./pages/tenant/TenantDashboard";
@@ -136,6 +137,7 @@ function App() {
             <Route path="vacancies" element={<Vacancies />} />
             <Route path="expenses" element={<Expenses />} />
             <Route path="analytics" element={<AdvancedAnalytics />} />
+            <Route path="visitor-amenities" element={<OwnerVisitorAmenities />} />
             <Route path="reviews" element={<PropertyReviews />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />

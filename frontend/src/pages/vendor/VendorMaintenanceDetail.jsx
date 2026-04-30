@@ -4,7 +4,7 @@ import {
   ArrowLeft, MapPin, User, CalendarDays, Phone, Mail,
   ClipboardList, Camera, CheckCircle2, BadgeIndianRupee,
   AlertTriangle, Clock3, Upload, Loader2, IndianRupee,
-  Image as ImageIcon, FileCheck2,
+  Image as ImageIcon, FileCheck2, ShieldCheck, X,
 } from "lucide-react";
 import api from "../../utils/api";
 import toast from "react-hot-toast";
@@ -56,6 +56,8 @@ const VendorMaintenanceDetail = () => {
   const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
+
+  const [confirmModal, setConfirmModal] = useState(false);
 
   // Quote form
   const [quoteAmount, setQuoteAmount] = useState("");
@@ -125,7 +127,7 @@ const VendorMaintenanceDetail = () => {
   };
 
   const handleMarkComplete = async () => {
-    if (!window.confirm("Mark this job as complete? The owner will be notified.")) return;
+    setConfirmModal(false);
     setSaving("complete");
     try {
       await api.patch(`/vendor/maintenance/${id}/complete`);
@@ -364,7 +366,7 @@ const VendorMaintenanceDetail = () => {
             <button
               type="button"
               disabled={saving === "complete"}
-              onClick={handleMarkComplete}
+              onClick={() => setConfirmModal(true)}
               className="inline-flex items-center gap-2 rounded-xl border border-teal-300 bg-teal-600 text-white px-5 py-2 text-sm font-bold hover:bg-teal-700 disabled:opacity-60 transition-colors"
             >
               {saving === "complete" ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
@@ -377,6 +379,58 @@ const VendorMaintenanceDetail = () => {
       </div>
 
       {/* Raise payment request */}
+            {/* Confirm Mark Complete Modal */}
+            {confirmModal && (
+              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                  <div className="bg-gradient-to-r from-teal-500 to-emerald-500 px-6 py-5 text-white">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                        <ShieldCheck size={22} />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-lg">Confirm Job Completion</h3>
+                        <p className="text-teal-100 text-xs mt-0.5">This action cannot be undone</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-6 py-5 space-y-4">
+                    <p className="text-gray-700 text-sm leading-relaxed">
+                      You are about to mark this <span className="font-semibold text-gray-900">{request.category}</span> job as complete.
+                    </p>
+                    <ul className="space-y-2">
+                      {[
+                        "The owner will be notified immediately",
+                        "The tenant will receive a maintenance update",
+                        "You can then raise a payment request",
+                      ].map((pt) => (
+                        <li key={pt} className="flex items-start gap-2 text-sm text-gray-600">
+                          <CheckCircle2 size={15} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                          {pt}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700 font-medium">
+                      Make sure all work photos are uploaded before confirming.
+                    </div>
+                  </div>
+                  <div className="px-6 pb-5 flex gap-3">
+                    <button type="button" onClick={() => setConfirmModal(false)}
+                      className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                      <X size={15} /> Cancel
+                    </button>
+                    <button type="button" disabled={saving === "complete"} onClick={handleMarkComplete}
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+                      {saving === "complete"
+                        ? <><Loader2 size={15} className="animate-spin" /> Marking…</>
+                        : <><ShieldCheck size={15} /> Yes, Mark Complete</>
+                      }
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
       <div className={`rounded-2xl border p-5 shadow-sm space-y-3 ${workDone && !payPaid ? "border-amber-100 bg-amber-50/50" : "border-gray-100 bg-gray-50 opacity-60"}`}>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 flex items-center gap-1.5">
           <BadgeIndianRupee size={13} /> Payment Request

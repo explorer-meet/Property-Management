@@ -214,6 +214,16 @@ const OwnerInquiries = () => {
                       <p className="mt-1 text-xs text-gray-600">Inquirer: {inquiry.inquirer?.name || "N/A"}</p>
                       <p className="text-xs text-gray-500">Email: {inquiry.inquirer?.email || "N/A"}</p>
                       <p className="text-xs text-gray-500 inline-flex items-center gap-1"><Phone size={12} /> {inquiry.inquirer?.phone || "N/A"}</p>
+                      <p className="mt-1 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                        {inquiry.inquiryType === "ShortTermRental" ? "Short-Term Rental Request" : "Viewing Inquiry"}
+                      </p>
+                      {inquiry.inquiryType === "ShortTermRental" ? (
+                        <p className="mt-2 rounded-lg border border-amber-100 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+                          {inquiry.shortStayDetails?.checkInDate && inquiry.shortStayDetails?.checkOutDate
+                            ? `Requested stay: ${new Date(inquiry.shortStayDetails.checkInDate).toLocaleDateString()} to ${new Date(inquiry.shortStayDetails.checkOutDate).toLocaleDateString()} (${inquiry.shortStayDetails?.guestsCount || 1} guest${(inquiry.shortStayDetails?.guestsCount || 1) === 1 ? "" : "s"})`
+                            : `Requested stay type: ${inquiry.shortStayDetails?.platform || "Airbnb-style short-term"}`}
+                        </p>
+                      ) : null}
                       {inquiry.message ? (
                         <p className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1.5 text-xs text-blue-700">
                           {inquiry.message}
