@@ -490,51 +490,51 @@ const OwnerDashboard = () => {
     <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_26%),radial-gradient(circle_at_85%_8%,_rgba(251,146,60,0.14),_transparent_22%),linear-gradient(180deg,_#f5f7fb_0%,_#f8fafc_38%,_#f2f6fb_100%)] pb-10">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[linear-gradient(135deg,rgba(15,23,42,0.04),rgba(255,255,255,0))]" />
       <div className="relative z-10 mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-[36px] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] px-6 py-6 text-white shadow-[0_28px_65px_rgba(15,23,42,0.22)] sm:px-8 sm:py-8">
+        <section className="relative overflow-hidden rounded-[32px] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] px-5 py-5 text-white shadow-[0_24px_56px_rgba(15,23,42,0.20)] sm:px-6 sm:py-6">
           <div className="absolute -left-8 top-0 h-44 w-44 rounded-full bg-cyan-400/20 blur-3xl" />
           <div className="absolute right-0 top-12 h-40 w-40 rounded-full bg-amber-400/15 blur-3xl" />
-          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-100">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100">
                 <Rocket size={12} /> Owner Operations Dashboard
               </div>
-              <h1 className="mt-5 max-w-3xl text-3xl font-extrabold tracking-tight text-white sm:text-[2.9rem]">
+              <h1 className="mt-3 max-w-2xl text-2xl font-extrabold tracking-tight text-white sm:text-[2.35rem]">
                 Cleaner control, faster actions, and a portfolio view that feels premium.
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-[15px]">
+              <p className="mt-2.5 max-w-xl text-sm leading-6 text-slate-300">
                 Welcome back {ownerDisplayName}. The dashboard is now organized around what matters first: health, revenue, tenant demand, and operating risk.
               </p>
 
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2.5">
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Health</p>
-                  <p className="mt-2 text-lg font-bold text-white">{portfolioHealthTone}</p>
+                  <p className="mt-1.5 text-base font-bold text-white">{portfolioHealthTone}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2.5">
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Occupancy</p>
-                  <p className="mt-2 text-lg font-bold text-white">{occupancyRate.toFixed(0)}%</p>
+                  <p className="mt-1.5 text-base font-bold text-white">{occupancyRate.toFixed(0)}%</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2.5">
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Collected</p>
-                  <p className="mt-2 text-lg font-bold text-white">{formatCurrency(paidRent)}</p>
+                  <p className="mt-1.5 text-base font-bold text-white">{formatCurrency(paidRent)}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2.5">
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Attention</p>
-                  <p className="mt-2 text-lg font-bold text-white">{attentionCount} live</p>
+                  <p className="mt-1.5 text-base font-bold text-white">{attentionCount} live</p>
                 </div>
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button type="button" onClick={() => navigate("/owner/properties")} className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition-all hover:-translate-y-0.5">
+              <div className="mt-4 flex flex-wrap gap-2.5">
+                <button type="button" onClick={() => navigate("/owner/properties")} className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg transition-all hover:-translate-y-0.5">
                   Open Portfolio <ArrowRight size={15} />
                 </button>
-                <button type="button" onClick={() => navigate("/owner/analytics")} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/15">
+                <button type="button" onClick={() => navigate("/owner/analytics")} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-white/15">
                   Analytics & Reports <BarChart2 size={15} />
                 </button>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-1">
+            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
               <SignalCard eyebrow="Revenue at risk" value={formatCurrency(overdueRent)} detail="Overdue rent that needs immediate follow-up." icon={AlertTriangle} tone="rose" onClick={() => navigate("/owner/rent")} />
               <SignalCard eyebrow="Open maintenance" value={`${openMaintenanceRequests}`} detail="Requests still active in the queue." icon={Wrench} tone="amber" onClick={() => navigate("/owner/maintenance")} />
               <SignalCard eyebrow="New inquiries" value={`${newInquiries}`} detail="Fresh leads waiting for outreach from your team." icon={BellRing} tone="emerald" onClick={() => navigate("/owner/inquiries")} />
