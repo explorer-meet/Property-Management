@@ -3,7 +3,7 @@ const router = express.Router();
 const { verifyToken, requireOwner, requireTenant, requireVendor, requireAdmin } = require("../middleware/authMiddleware");
 const { uploadMaintenancePhotos, uploadComplianceDocument, uploadPaymentQrCode, uploadProfilePicture, uploadPropertyPhotos } = require("../middleware/uploadMiddleware");
 const {
-  signUp, signIn, forgotPassword, getProfile, updateProfile,
+  signUp, signIn, forgotPassword, requestPasswordReset, resetPassword, getProfile, updateProfile,
   uploadProfilePicture: uploadProfilePictureController,
   addProperty, getOwnerProperties, getPropertyById, updateProperty, uploadPropertyPhotos: uploadPropertyPhotosController, removePropertyPhoto, deleteProperty,
   getPublicProperties, submitVendorLead, createPropertyInquiry, getOwnerInquiries, updateOwnerInquiryStatus,
@@ -13,11 +13,13 @@ const {
   getOwnerMaintenanceRequests, updateMaintenanceStatus, addCommentToRequest,
   getOwnerVendors, updateVendorRateAndContract, rateVendor, getOwnerVendorInvoices, assignVendorToMaintenanceRequest, decideVendorQuote, completeVendorPayment,
   getAdminVendors, createAdminVendor, updateAdminVendor, deleteAdminVendor, getAdminVendorLeads, updateAdminVendorLeadStatus, getAdminStats, getAdminEntityList, updateAdminEntityStatus,
+  getAdminMoveOutRequests, deleteAdminMoveOutRequest,
   getOwnerDashboard, getOwnerAnalytics, exportOwnerAnalyticsCsv,
   getTenantDashboard, getTenantLeases, getTenantLease, getTenantRentHistory, submitTenantRentPayment, getTenantOwnerPaymentDetails, getTenantInquiries, requestTenantRevisit,
   createMaintenanceRequest, getTenantMaintenanceRequests,
-  createMoveOutRequest, getTenantMoveOutRequests,
-  getOwnerMoveOutRequests, decideMoveOutRequest, completeMoveOutRequest,
+  createMoveOutRequest, getTenantMoveOutRequests, cancelTenantMoveOutRequest,
+  acknowledgeMoveOutRefundByTenant,
+  getOwnerMoveOutRequests, decideMoveOutRequest, completeMoveOutRequest, updateMoveOutRefundByOwner, resolveMoveOutRefundDisputeByOwner,
   createLeaseRenewal, getOwnerLeaseRenewals, cancelLeaseRenewal,
   getTenantLeaseRenewals, decideLeaseRenewal,
   downloadRentReceipt, exportOwnerRentCsv,
@@ -45,6 +47,8 @@ const {
 // ── Auth ──────────────────────────────────────
 router.post("/auth/signup", signUp);
 router.post("/auth/signin", signIn);
+router.post("/auth/forgot-password/request", requestPasswordReset);
+router.post("/auth/forgot-password/reset", resetPassword);
 router.post("/auth/forgot-password", forgotPassword);
 router.get("/auth/profile", verifyToken, getProfile);
 router.put("/auth/profile", verifyToken, updateProfile);
@@ -148,11 +152,15 @@ router.put("/admin/vendors/:id", verifyToken, requireAdmin, updateAdminVendor);
 router.delete("/admin/vendors/:id", verifyToken, requireAdmin, deleteAdminVendor);
 router.get("/admin/vendor-leads", verifyToken, requireAdmin, getAdminVendorLeads);
 router.patch("/admin/vendor-leads/:id/status", verifyToken, requireAdmin, updateAdminVendorLeadStatus);
+router.get("/admin/move-out", verifyToken, requireAdmin, getAdminMoveOutRequests);
+router.delete("/admin/move-out/:id", verifyToken, requireAdmin, deleteAdminMoveOutRequest);
 
 // ── Owner – Move-Out Requests ──────────────────
 router.get("/owner/move-out", verifyToken, requireOwner, getOwnerMoveOutRequests);
 router.patch("/owner/move-out/:id/decision", verifyToken, requireOwner, decideMoveOutRequest);
 router.patch("/owner/move-out/:id/complete", verifyToken, requireOwner, completeMoveOutRequest);
+router.patch("/owner/move-out/:id/refund", verifyToken, requireOwner, updateMoveOutRefundByOwner);
+router.patch("/owner/move-out/:id/refund/dispute/resolve", verifyToken, requireOwner, resolveMoveOutRefundDisputeByOwner);
 
 // ── Owner – Compliance Documents ───────────────
 router.get("/owner/compliance-documents", verifyToken, requireOwner, getOwnerComplianceDocuments);
@@ -194,6 +202,8 @@ router.get("/tenant/maintenance", verifyToken, requireTenant, getTenantMaintenan
 // ── Tenant – Move-Out Requests ─────────────────
 router.post("/tenant/move-out", verifyToken, requireTenant, createMoveOutRequest);
 router.get("/tenant/move-out", verifyToken, requireTenant, getTenantMoveOutRequests);
+router.patch("/tenant/move-out/:id/cancel", verifyToken, requireTenant, cancelTenantMoveOutRequest);
+router.patch("/tenant/move-out/:id/refund/acknowledge", verifyToken, requireTenant, acknowledgeMoveOutRefundByTenant);
 
 // ── Tenant – Compliance Documents ──────────────
 router.get("/tenant/compliance-documents", verifyToken, requireTenant, getTenantComplianceDocuments);

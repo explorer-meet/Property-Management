@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const User = require("../models/User");
@@ -52,6 +53,39 @@ const sendMailEvent = async (payload) => {
   } catch (_) {
     // Non-blocking side effect
   }
+};
+
+const PASSWORD_RESET_TTL_MINUTES = 15;
+const PASSWORD_RESET_OTP_MAX_ATTEMPTS = 5;
+const REQUIRED_COMPLIANCE_DOCUMENTS = ["Rent Agreement", "Aadhaar Card", "PAN Card"];
+
+const hashSecretValue = (value) => crypto.createHash("sha256").update(String(value || "")).digest("hex");
+
+const buildLifecycleNotificationKey = ({ leaseId, role, code }) => `lease:${leaseId}:${role}:${code}`;
+
+const createLifecycleNotificationOnce = async ({ recipient, role, title, message, type = "system", actionPath, lifecycleKey, metadata = {} }) => {
+  if (!recipient || !lifecycleKey) return;
+
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const alreadyExists = await Notification.findOne({
+    recipient,
+    role,
+    "metadata.lifecycleKey": lifecycleKey,
+    createdAt: { $gte: cutoff },
+    isRead: false,
+  }).select("_id");
+
+  if (alreadyExists) return;
+
+  await createNotification({
+    recipient,
+    role,
+    title,
+    message,
+    type,
+    actionPath,
+    metadata: { ...metadata, lifecycleKey },
+  });
 };
 
 const DEFAULT_VENDOR_PASSWORD = String(process.env.VENDOR_DEFAULT_PASSWORD || "Vendor@123");
@@ -295,6 +329,237 @@ const getTenantLeaseContext = async (tenantId) => {
     ownerId: lease.property.owner,
     propertyId: lease.property._id,
   };
+};
+
+const computeLeaseLifecycleState = async (leaseId) => {
+  const lease = await Lease.findById(leaseId)
+    .populate("property", "propertyType address")
+    .populate("owner", "_id name email")
+    .populate("tenant", "_id name email");
+
+  if (!lease) return null;
+
+  const [outstanding, pendingRenewalCount, acceptedRenewalCount, moveOut, docs] = await Promise.all([
+    RentPayment.aggregate([
+      {
+        $match: {
+          lease: lease._id,
+          status: { $in: ["Pending", "Overdue"] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          amount: { $sum: "$totalAmount" },
+        },
+      },
+    ]),
+    LeaseRenewal.countDocuments({ lease: lease._id, status: "Pending" }),
+    LeaseRenewal.countDocuments({ lease: lease._id, status: "Accepted" }),
+    MoveOutRequest.findOne({ lease: lease._id }).sort({ createdAt: -1 }),
+    ComplianceDocument.find({ lease: lease._id })
+      .select("documentType verificationStatus updatedAt")
+      .sort({ updatedAt: -1 }),
+  ]);
+
+  const dueCount = outstanding[0]?.count || 0;
+  const dueAmount = parseMoney(outstanding[0]?.amount || 0);
+
+  const latestDocStatusByType = new Map();
+  for (const doc of docs) {
+    if (!latestDocStatusByType.has(doc.documentType)) {
+      latestDocStatusByType.set(doc.documentType, doc.verificationStatus);
+    }
+  }
+
+  const rejectedDocs = Array.from(latestDocStatusByType.entries())
+    .filter(([, status]) => status === "Rejected")
+    .map(([type]) => type);
+
+  const missingRequiredDocs = REQUIRED_COMPLIANCE_DOCUMENTS.filter((type) => {
+    const status = latestDocStatusByType.get(type);
+    return !status || status !== "Verified";
+  });
+
+  const now = startOfDay(new Date());
+  const leaseEnd = startOfDay(lease.leaseEndDate);
+  const daysToExpiry = now && leaseEnd ? Math.ceil((leaseEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+  const hasActiveMoveOut = Boolean(moveOut && ["Pending", "Approved"].includes(moveOut.status));
+
+  const nextActions = [];
+
+  if (dueCount > 0) {
+    nextActions.push({
+      code: "OVERDUE_OR_PENDING_RENT",
+      role: "tenant",
+      severity: "high",
+      actionPath: "/tenant/rent",
+      message: `Clear ${dueCount} pending rent item(s) worth ${formatCurrency(dueAmount)}.`,
+      title: "Action required: Rent payment pending",
+      type: "rent",
+    });
+  }
+
+  if (rejectedDocs.length > 0) {
+    nextActions.push({
+      code: "REUPLOAD_REJECTED_COMPLIANCE",
+      role: "tenant",
+      severity: "medium",
+      actionPath: "/tenant/leases",
+      message: `Re-upload rejected document(s): ${rejectedDocs.join(", ")}.`,
+      title: "Action required: Compliance document rejected",
+      type: "compliance",
+    });
+  }
+
+  if (missingRequiredDocs.length > 0 && lease.isActive) {
+    nextActions.push({
+      code: "MISSING_REQUIRED_COMPLIANCE",
+      role: "tenant",
+      severity: "medium",
+      actionPath: "/tenant/leases",
+      message: `Upload required document(s): ${missingRequiredDocs.join(", ")}.`,
+      title: "Action required: Missing compliance documents",
+      type: "compliance",
+    });
+  }
+
+  if (lease.isActive && daysToExpiry !== null && daysToExpiry <= 7 && daysToExpiry >= 0 && pendingRenewalCount === 0 && !hasActiveMoveOut) {
+    nextActions.push({
+      code: "PROPOSE_OR_REQUEST_RENEWAL",
+      role: "owner",
+      severity: "high",
+      actionPath: "/owner/renewals",
+      message: `Lease expires in ${daysToExpiry} day(s). Propose renewal or finalize move-out planning.`,
+      title: "Action required: Lease expiry approaching",
+      type: "renewal",
+    });
+  }
+
+  if (lease.isActive && daysToExpiry !== null && daysToExpiry < 0 && acceptedRenewalCount === 0 && !hasActiveMoveOut) {
+    nextActions.push({
+      code: "EXPIRED_LEASE_WITHOUT_RENEWAL",
+      role: "owner",
+      severity: "critical",
+      actionPath: "/owner/tenants",
+      message: "Lease has expired without accepted renewal. Complete renewal or close occupancy immediately.",
+      title: "Critical: Lease expired without closure",
+      type: "renewal",
+    });
+  }
+
+  if (moveOut?.status === "Approved") {
+    nextActions.push({
+      code: "MOVEOUT_APPROVED_PENDING_COMPLETION",
+      role: "owner",
+      severity: "high",
+      actionPath: "/owner/move-out",
+      message: "Move-out is approved. Complete handover and settlement once dues are cleared.",
+      title: "Action required: Complete approved move-out",
+      type: "moveout",
+    });
+  }
+
+  if (moveOut?.status === "Completed") {
+    const refundStatus = moveOut.refund?.status || "NotInitiated";
+    const disputeStatus = moveOut.refund?.dispute?.status || "None";
+
+    if (refundStatus === "PendingProcessing") {
+      nextActions.push({
+        code: "REFUND_PENDING_PROCESSING",
+        role: "owner",
+        severity: "medium",
+        actionPath: "/owner/move-out",
+        message: "Security deposit refund is pending. Update payout date and proof after transfer.",
+        title: "Action required: Process security deposit refund",
+        type: "moveout",
+      });
+    }
+
+    if (refundStatus === "Paid") {
+      nextActions.push({
+        code: "REFUND_NEEDS_TENANT_ACK",
+        role: "tenant",
+        severity: "medium",
+        actionPath: "/tenant/move-out",
+        message: "Refund marked paid. Acknowledge receipt or raise a dispute.",
+        title: "Action required: Confirm security deposit refund",
+        type: "moveout",
+      });
+    }
+
+    if (disputeStatus === "Open") {
+      nextActions.push({
+        code: "REFUND_DISPUTE_OPEN",
+        role: "owner",
+        severity: "high",
+        actionPath: "/owner/move-out",
+        message: "Tenant raised a refund dispute. Provide resolution and close it.",
+        title: "Action required: Resolve refund dispute",
+        type: "moveout",
+      });
+    }
+  }
+
+  const stage = !lease.isActive
+    ? "Closed"
+    : hasActiveMoveOut
+    ? "MoveOutInProgress"
+    : pendingRenewalCount > 0
+    ? "RenewalPending"
+    : "Active";
+
+  return {
+    leaseId: lease._id,
+    ownerId: lease.owner?._id,
+    tenantId: lease.tenant?._id,
+    stage,
+    flags: {
+      dueCount,
+      dueAmount,
+      pendingRenewalCount,
+      acceptedRenewalCount,
+      hasActiveMoveOut,
+      latestMoveOutStatus: moveOut?.status || null,
+      rejectedDocuments: rejectedDocs,
+      missingRequiredDocuments: missingRequiredDocs,
+      daysToExpiry,
+    },
+    nextActions,
+    evaluatedAt: new Date(),
+  };
+};
+
+const runLeaseLifecycleAutomation = async (leaseId) => {
+  try {
+    const state = await computeLeaseLifecycleState(leaseId);
+    if (!state) return null;
+
+    for (const action of state.nextActions) {
+      const recipient = action.role === "owner" ? state.ownerId : state.tenantId;
+      const lifecycleKey = buildLifecycleNotificationKey({ leaseId: state.leaseId, role: action.role, code: action.code });
+
+      await createLifecycleNotificationOnce({
+        recipient,
+        role: action.role,
+        title: action.title,
+        message: action.message,
+        type: action.type,
+        actionPath: action.actionPath,
+        lifecycleKey,
+        metadata: {
+          leaseId: state.leaseId,
+          actionCode: action.code,
+          severity: action.severity,
+        },
+      });
+    }
+
+    return state;
+  } catch (_) {
+    return null;
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -911,32 +1176,130 @@ const signUp = async (req, res) => {
   }
 };
 
-const forgotPassword = async (req, res) => {
+const requestPasswordReset = async (req, res) => {
   try {
-    const { email, newPassword, confirmPassword } = req.body;
-    if (!email || !newPassword || !confirmPassword) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Email, new password and confirm password are required." });
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Email is required." });
     }
-    if (newPassword !== confirmPassword) {
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(StatusCodes.OK).json({
+        message: "If an account exists, reset instructions have been sent to the registered email.",
+      });
+    }
+
+    const cooldownWindowMs = 60 * 1000;
+    if (user.passwordResetRequestedAt && Date.now() - new Date(user.passwordResetRequestedAt).getTime() < cooldownWindowMs) {
+      return res.status(StatusCodes.TOO_MANY_REQUESTS).json({
+        message: "Please wait at least 60 seconds before requesting a new reset code.",
+      });
+    }
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+
+    user.passwordResetOtpHash = hashSecretValue(otp);
+    user.passwordResetExpiresAt = expiresAt;
+    user.passwordResetRequestedAt = new Date();
+    user.passwordResetAttempts = 0;
+    await user.save();
+
+    await sendMailEvent({
+      to: user.email,
+      subject: "Password reset verification",
+      recipientName: user.firstName || user.name,
+      heading: "Password reset requested",
+      lead: "Use the OTP below to reset your password. The OTP expires in 15 minutes.",
+      highlights: [
+        `OTP: ${otp}`,
+        "If you did not request this reset, ignore this email.",
+      ],
+      actionLabel: "Open Reset Page",
+      actionPath: "/forgot-password",
+      accent: "#ea580c",
+    });
+
+    res.status(StatusCodes.OK).json({
+      message: "If an account exists, reset instructions have been sent to the registered email.",
+    });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword, password, confirmPassword } = req.body || {};
+    const resolvedNewPassword = newPassword || password;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+
+    if (!normalizedEmail || !otp || !resolvedNewPassword || !confirmPassword) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Email, OTP, new password and confirm password are required.",
+      });
+    }
+
+    if (resolvedNewPassword !== confirmPassword) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "Password and confirm password must match." });
     }
-    if (newPassword.length < 6) {
+
+    if (String(resolvedNewPassword).length < 6) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "Password must be at least 6 characters." });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: "No account found with this email." });
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid or expired reset verification." });
     }
 
-    user.password = newPassword;
+    if (!user.passwordResetExpiresAt || new Date(user.passwordResetExpiresAt).getTime() < Date.now()) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Reset verification expired. Request a new one." });
+    }
+
+    if ((user.passwordResetAttempts || 0) >= PASSWORD_RESET_OTP_MAX_ATTEMPTS) {
+      return res.status(StatusCodes.TOO_MANY_REQUESTS).json({
+        message: "Too many failed attempts. Request a new reset verification.",
+      });
+    }
+
+    const otpMatch = hashSecretValue(otp) === user.passwordResetOtpHash;
+
+    if (!otpMatch) {
+      user.passwordResetAttempts = Number(user.passwordResetAttempts || 0) + 1;
+      await user.save();
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid or expired reset verification." });
+    }
+
+    user.password = String(resolvedNewPassword);
+    user.passwordResetOtpHash = "";
+    user.passwordResetExpiresAt = null;
+    user.passwordResetRequestedAt = null;
+    user.passwordResetAttempts = 0;
     await user.save();
+
+    await sendMailEvent({
+      to: user.email,
+      subject: "Password reset successful",
+      recipientName: user.firstName || user.name,
+      heading: "Your password was reset",
+      lead: "Your account password has been changed successfully.",
+      highlights: [
+        "If you did not perform this change, contact support immediately.",
+      ],
+      actionLabel: "Sign In",
+      actionPath: "/login",
+      accent: "#16a34a",
+    });
 
     res.status(StatusCodes.OK).json({ message: "Password reset successful. Please login with your new password." });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
 };
+
+const forgotPassword = resetPassword;
 
 const signIn = async (req, res) => {
   try {
@@ -1342,7 +1705,15 @@ const getOwnerLeases = async (req, res) => {
       .populate("property", "propertyType address status")
       .populate("tenant", "name email phone")
       .sort({ createdAt: -1 });
-    res.status(StatusCodes.OK).json({ leases });
+
+    const leasesWithLifecycle = await Promise.all(
+      leases.map(async (lease) => {
+        const lifecycle = await computeLeaseLifecycleState(lease._id);
+        return { ...lease.toObject(), lifecycle };
+      })
+    );
+
+    res.status(StatusCodes.OK).json({ leases: leasesWithLifecycle });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -1463,6 +1834,8 @@ const generateRentRecord = async (req, res) => {
       actionPath: "/tenant/rent",
       accent: "#0284c7",
     });
+
+    await runLeaseLifecycleAutomation(lease._id);
 
     res.status(StatusCodes.CREATED).json({ message: "Rent record created.", rent });
   } catch (err) {
@@ -1640,6 +2013,8 @@ const markRentPaid = async (req, res) => {
       accent: "#16a34a",
     });
 
+    await runLeaseLifecycleAutomation(rent.lease);
+
     res.status(StatusCodes.OK).json({ message: "Rent marked as paid.", rent });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -1654,6 +2029,7 @@ const markRentOverdue = async (req, res) => {
       .populate("property", "propertyType address");
     const today = startOfDay(new Date());
     let modifiedCount = 0;
+    const touchedLeaseIds = new Set();
 
     for (const record of records) {
       const dueDate = startOfDay(record.dueDate);
@@ -1675,6 +2051,7 @@ const markRentOverdue = async (req, res) => {
       record.totalAmount = Number((Number(record.amount || 0) + lateFeeAmount).toFixed(2));
       await record.save();
       modifiedCount += 1;
+      touchedLeaseIds.add(String(record.lease?._id || record.lease));
 
       await createNotification({
         recipient: record.tenant,
@@ -1701,6 +2078,10 @@ const markRentOverdue = async (req, res) => {
         actionPath: "/tenant/rent",
         accent: "#dc2626",
       });
+    }
+
+    for (const leaseId of touchedLeaseIds) {
+      await runLeaseLifecycleAutomation(leaseId);
     }
 
     res.status(StatusCodes.OK).json({ message: `${modifiedCount} rent record(s) marked overdue with late fee applied.` });
@@ -2305,21 +2686,59 @@ const updateAdminVendorLeadStatus = async (req, res) => {
   }
 };
 
+const getAdminMoveOutRequests = async (_req, res) => {
+  try {
+    const requests = await MoveOutRequest.find({})
+      .populate("tenant", "name email phone")
+      .populate("owner", "name email phone")
+      .populate("property", "propertyType address")
+      .populate("lease", "leaseStartDate leaseEndDate rentAmount")
+      .sort({ createdAt: -1 });
+
+    res.status(StatusCodes.OK).json({ requests });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const deleteAdminMoveOutRequest = async (req, res) => {
+  try {
+    const deleted = await MoveOutRequest.findByIdAndDelete(req.params.id).select("_id status");
+    if (!deleted) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Move-out request not found." });
+    }
+
+    res.status(StatusCodes.OK).json({ message: "Move-out request deleted from database.", request: deleted });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
 // ─────────────────────────────────────────────
 //  ADMIN – PLATFORM STATS
 // ─────────────────────────────────────────────
 const getAdminStats = async (req, res) => {
   try {
-    const [totalOwners, totalTenants, totalProperties, totalLeases, totalVendors, totalLeads] = await Promise.all([
+    const [totalOwners, totalTenants, totalProperties, totalLeases, totalMoveOutRequests, totalVendors, totalLeads] = await Promise.all([
       User.countDocuments({ role: "owner" }),
       User.countDocuments({ role: "tenant" }),
       Property.countDocuments({ isActive: true }),
       Lease.countDocuments({}),
+      MoveOutRequest.countDocuments({}),
       Vendor.countDocuments({ managedByApp: true, isActive: true }),
       VendorLead.countDocuments({}),
     ]);
     const newLeads = await VendorLead.countDocuments({ status: "New" });
-    res.status(StatusCodes.OK).json({ totalOwners, totalTenants, totalProperties, totalLeases, totalVendors, totalLeads, newLeads });
+    res.status(StatusCodes.OK).json({
+      totalOwners,
+      totalTenants,
+      totalProperties,
+      totalLeases,
+      totalMoveOutRequests,
+      totalVendors,
+      totalLeads,
+      newLeads,
+    });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -2933,7 +3352,14 @@ const getTenantLeases = async (req, res) => {
       .populate("owner", "name email phone")
       .sort({ createdAt: -1 });
 
-    res.status(StatusCodes.OK).json({ leases });
+    const leasesWithLifecycle = await Promise.all(
+      leases.map(async (lease) => {
+        const lifecycle = await computeLeaseLifecycleState(lease._id);
+        return { ...lease.toObject(), lifecycle };
+      })
+    );
+
+    res.status(StatusCodes.OK).json({ leases: leasesWithLifecycle });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -3094,9 +3520,21 @@ const createMoveOutRequest = async (req, res) => {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "Move-out date cannot be in the past." });
     }
 
-    const pending = await MoveOutRequest.findOne({ lease: lease._id, status: "Pending" });
-    if (pending) {
-      return res.status(StatusCodes.CONFLICT).json({ message: "You already have a pending move-out request." });
+    const activeRequest = await MoveOutRequest.findOne({
+      lease: lease._id,
+      status: { $in: ["Pending", "Approved"] },
+    });
+    if (activeRequest) {
+      return res.status(StatusCodes.CONFLICT).json({
+        message: "You already have an active move-out request. Cancel it first to continue the lease.",
+      });
+    }
+
+    const pendingRenewal = await LeaseRenewal.findOne({ lease: lease._id, status: "Pending" }).select("_id");
+    if (pendingRenewal) {
+      return res.status(StatusCodes.CONFLICT).json({
+        message: "A pending lease renewal exists. Resolve renewal decision before creating move-out request.",
+      });
     }
 
     const request = await MoveOutRequest.create({
@@ -3150,6 +3588,8 @@ const createMoveOutRequest = async (req, res) => {
       accent: "#0284c7",
     });
 
+    await runLeaseLifecycleAutomation(lease._id);
+
     res.status(StatusCodes.CREATED).json({ message: "Move-out request submitted.", request });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -3159,10 +3599,81 @@ const createMoveOutRequest = async (req, res) => {
 const getTenantMoveOutRequests = async (req, res) => {
   try {
     const requests = await MoveOutRequest.find({ tenant: req.user.userId })
+      .populate("lease", "leaseStartDate leaseEndDate rentAmount")
       .populate("property", "propertyType address")
       .populate("owner", "name email phone")
       .sort({ createdAt: -1 });
     res.status(StatusCodes.OK).json({ requests });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const cancelTenantMoveOutRequest = async (req, res) => {
+  try {
+    const { reason } = req.body || {};
+
+    const request = await MoveOutRequest.findOne({ _id: req.params.id, tenant: req.user.userId });
+    if (!request) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Move-out request not found." });
+    }
+
+    if (!["Pending", "Approved"].includes(request.status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Only pending or approved move-out requests can be cancelled.",
+      });
+    }
+
+    request.status = "Cancelled";
+    request.cancelledAt = new Date();
+    request.tenantCancelReason = reason || "Lease continuation requested by tenant.";
+    await request.save();
+
+    const tenant = await User.findById(req.user.userId).select("name email");
+    const owner = await User.findById(request.owner).select("name email");
+
+    await createNotification({
+      recipient: request.owner,
+      role: "owner",
+      title: "Move-out request cancelled by tenant",
+      message: `${tenant?.name || "Tenant"} cancelled the move-out request and will continue the lease.`,
+      type: "moveout",
+      actionPath: "/owner/move-out",
+      senderName: tenant?.name || "Tenant",
+      metadata: { requestId: request._id },
+    });
+
+    await sendMailEvent({
+      to: owner?.email,
+      subject: "Tenant cancelled move-out request",
+      recipientName: owner?.name,
+      heading: "Move-out request cancelled",
+      lead: `${tenant?.name || "Tenant"} has cancelled the move-out request.`,
+      highlights: [
+        reason ? `Tenant note: ${reason}` : "No additional note shared by tenant.",
+      ],
+      actionLabel: "Open Move-Out Requests",
+      actionPath: "/owner/move-out",
+      accent: "#64748b",
+    });
+
+    await sendMailEvent({
+      to: tenant?.email,
+      subject: "Move-out request cancelled",
+      recipientName: tenant?.name,
+      heading: "Your move-out request is cancelled",
+      lead: "Your lease will continue as active.",
+      highlights: [
+        reason ? `Your note: ${reason}` : "No additional note added.",
+      ],
+      actionLabel: "Open Lease",
+      actionPath: "/tenant/leases",
+      accent: "#2563eb",
+    });
+
+    await runLeaseLifecycleAutomation(request.lease);
+
+    res.status(StatusCodes.OK).json({ message: "Move-out request cancelled.", request });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -3299,6 +3810,8 @@ const decideMoveOutRequest = async (req, res) => {
       accent: updatedRequest.status === "Approved" ? "#16a34a" : "#dc2626",
     });
 
+    await runLeaseLifecycleAutomation(updatedRequest.lease?._id || updatedRequest.lease);
+
     res.status(StatusCodes.OK).json({ message: "Move-out request updated.", request: updatedRequest });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -3366,12 +3879,13 @@ const completeMoveOutRequest = async (req, res) => {
     const other = parseMoney(otherDeduction);
     const refundableDeposit = parseMoney(leaseDoc?.securityDeposit || 0);
     const finalPayableToTenant = parseMoney(Math.max(0, refundableDeposit - unpaid - maintenance - other));
+    const initialRefundStatus = finalPayableToTenant > 0 ? "PendingProcessing" : "NotInitiated";
 
     const updatedRequest = await MoveOutRequest.findOneAndUpdate(
       { _id: req.params.id, owner: req.user.userId },
       {
-        status: "Completed",
-        completedAt: new Date(),
+        status: "Acknowledgement Pending",
+        completedAt: null,
         completionNote: completionNote || "Move-out completed and property handed over.",
         settlement: {
           unpaidRentAmount: unpaid,
@@ -3380,6 +3894,24 @@ const completeMoveOutRequest = async (req, res) => {
           refundableDeposit,
           finalPayableToTenant,
           note: settlementNote || "",
+        },
+        refund: {
+          status: initialRefundStatus,
+          payoutDate: null,
+          payoutReference: "",
+          payoutProof: "",
+          ownerNote: finalPayableToTenant > 0
+            ? "Refund pending processing by owner."
+            : "No refund payable after settlement deductions.",
+          tenantAcknowledgedAt: null,
+          tenantAcknowledgementNote: "",
+          dispute: {
+            status: "None",
+            raisedAt: null,
+            resolvedAt: null,
+            tenantMessage: "",
+            ownerResolutionNote: "",
+          },
         },
       },
       { new: true }
@@ -3391,17 +3923,235 @@ const completeMoveOutRequest = async (req, res) => {
     await createNotification({
       recipient: updatedRequest.tenant?._id,
       role: "tenant",
-      title: "Move-out completed",
-      message: `Final settlement prepared. Payable amount: $${Number(finalPayableToTenant).toFixed(2)}.`,
+      title: "Move-out settlement shared",
+      message: `Final settlement prepared. Payable amount: ${formatCurrency(finalPayableToTenant)}. Acknowledgement is pending.`,
       type: "moveout",
-      actionPath: "/tenant/dashboard",
+      actionPath: "/tenant/move-out",
       metadata: { requestId: updatedRequest._id, finalPayableToTenant },
     });
 
+    await runLeaseLifecycleAutomation(updatedRequest.lease?._id || updatedRequest.lease);
+
     res.status(StatusCodes.OK).json({
-      message: "Move-out completed. Lease closed and property marked vacant.",
+      message: "Move-out settlement recorded. Waiting for tenant acknowledgement to mark completed.",
       request: updatedRequest,
     });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const updateMoveOutRefundByOwner = async (req, res) => {
+  try {
+    const { status, payoutDate, payoutReference, payoutProof, ownerNote } = req.body || {};
+
+    const request = await MoveOutRequest.findOne({ _id: req.params.id, owner: req.user.userId })
+      .populate("tenant", "name email")
+      .populate("lease", "_id");
+
+    if (!request) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Move-out request not found." });
+    }
+
+    if (!["Acknowledgement Pending", "Completed"].includes(request.status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Refund can only be updated after move-out settlement." });
+    }
+
+    const allowedStatuses = ["PendingProcessing", "Paid", "Resolved"];
+    if (status && !allowedStatuses.includes(status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Refund status must be PendingProcessing, Paid, or Resolved.",
+      });
+    }
+
+    if ((status === "Paid" || request.refund?.status === "Paid") && !String(payoutProof || request.refund?.payoutProof || "").trim()) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Payout proof is required when refund is marked as paid.",
+      });
+    }
+
+    const nextRefund = {
+      ...(request.refund?.toObject ? request.refund.toObject() : request.refund || {}),
+      status: status || request.refund?.status || "PendingProcessing",
+      payoutDate: payoutDate ? new Date(payoutDate) : request.refund?.payoutDate || null,
+      payoutReference: payoutReference !== undefined ? String(payoutReference || "").trim() : (request.refund?.payoutReference || ""),
+      payoutProof: payoutProof !== undefined ? String(payoutProof || "").trim() : (request.refund?.payoutProof || ""),
+      ownerNote: ownerNote !== undefined ? String(ownerNote || "").trim() : (request.refund?.ownerNote || ""),
+      dispute: {
+        ...(request.refund?.dispute?.toObject ? request.refund.dispute.toObject() : request.refund?.dispute || {}),
+      },
+    };
+
+    if (Number.isNaN(new Date(nextRefund.payoutDate || new Date()).getTime()) && nextRefund.payoutDate) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid payout date." });
+    }
+
+    if (nextRefund.status === "Paid") {
+      nextRefund.dispute.status = nextRefund.dispute?.status === "Open" ? "Open" : "None";
+    }
+
+    const updated = await MoveOutRequest.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user.userId },
+      { refund: nextRefund },
+      { new: true }
+    )
+      .populate("tenant", "name email phone")
+      .populate("property", "propertyType address")
+      .populate("lease", "leaseStartDate leaseEndDate rentAmount");
+
+    await createNotification({
+      recipient: updated.tenant?._id,
+      role: "tenant",
+      title: "Security deposit refund updated",
+      message: `Refund status updated to ${updated.refund?.status || "PendingProcessing"}.`,
+      type: "moveout",
+      actionPath: "/tenant/move-out",
+      metadata: { requestId: updated._id, refundStatus: updated.refund?.status || "PendingProcessing" },
+    });
+
+    await runLeaseLifecycleAutomation(updated.lease?._id || updated.lease);
+
+    res.status(StatusCodes.OK).json({ message: "Refund details updated.", request: updated });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const acknowledgeMoveOutRefundByTenant = async (req, res) => {
+  try {
+    const { acknowledged, note } = req.body || {};
+
+    const request = await MoveOutRequest.findOne({ _id: req.params.id, tenant: req.user.userId })
+      .populate("owner", "name email")
+      .populate("lease", "_id");
+
+    if (!request) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Move-out request not found." });
+    }
+
+    if (!["Acknowledgement Pending", "Completed"].includes(request.status)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Refund acknowledgement is available only after move-out settlement." });
+    }
+
+    const isAcknowledged = Boolean(acknowledged);
+    if (!isAcknowledged && !String(note || "").trim()) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Dispute note is required when rejecting acknowledgement." });
+    }
+
+    const nextRefund = {
+      ...(request.refund?.toObject ? request.refund.toObject() : request.refund || {}),
+      tenantAcknowledgedAt: isAcknowledged ? new Date() : null,
+      tenantAcknowledgementNote: String(note || "").trim(),
+      status: isAcknowledged ? "Acknowledged" : "Disputed",
+      dispute: {
+        ...(request.refund?.dispute?.toObject ? request.refund.dispute.toObject() : request.refund?.dispute || {}),
+        status: isAcknowledged ? "None" : "Open",
+        raisedAt: isAcknowledged ? null : new Date(),
+        tenantMessage: isAcknowledged ? "" : String(note || "").trim(),
+        ownerResolutionNote: isAcknowledged ? "" : (request.refund?.dispute?.ownerResolutionNote || ""),
+        resolvedAt: isAcknowledged ? new Date() : null,
+      },
+    };
+
+    const updated = await MoveOutRequest.findOneAndUpdate(
+      { _id: req.params.id, tenant: req.user.userId },
+      {
+        refund: nextRefund,
+        status: isAcknowledged ? "Completed" : "Acknowledgement Pending",
+        completedAt: isAcknowledged ? new Date() : null,
+      },
+      { new: true }
+    )
+      .populate("tenant", "name email phone")
+      .populate("owner", "name email phone")
+      .populate("property", "propertyType address")
+      .populate("lease", "leaseStartDate leaseEndDate rentAmount");
+
+    await createNotification({
+      recipient: updated.owner?._id,
+      role: "owner",
+      title: isAcknowledged ? "Tenant acknowledged refund" : "Refund dispute raised by tenant",
+      message: isAcknowledged
+        ? "Tenant confirmed the refund settlement."
+        : "Tenant raised a dispute on refund settlement.",
+      type: "moveout",
+      actionPath: "/owner/move-out",
+      senderName: updated.tenant?.name || "Tenant",
+      metadata: { requestId: updated._id, refundStatus: updated.refund?.status },
+    });
+
+    await runLeaseLifecycleAutomation(updated.lease?._id || updated.lease);
+
+    res.status(StatusCodes.OK).json({
+      message: isAcknowledged ? "Refund acknowledged successfully." : "Refund dispute submitted successfully.",
+      request: updated,
+    });
+  } catch (err) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
+  }
+};
+
+const resolveMoveOutRefundDisputeByOwner = async (req, res) => {
+  try {
+    const { resolutionNote, payoutDate, payoutReference, payoutProof } = req.body || {};
+    if (!String(resolutionNote || "").trim()) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Resolution note is required." });
+    }
+
+    const request = await MoveOutRequest.findOne({ _id: req.params.id, owner: req.user.userId })
+      .populate("tenant", "name email")
+      .populate("lease", "_id");
+
+    if (!request) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Move-out request not found." });
+    }
+
+    if (request.refund?.dispute?.status !== "Open") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "No open refund dispute found for this request." });
+    }
+
+    const resolvedPayoutDate = payoutDate ? new Date(payoutDate) : request.refund?.payoutDate || null;
+    if (resolvedPayoutDate && Number.isNaN(resolvedPayoutDate.getTime())) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid payout date." });
+    }
+
+    const nextRefund = {
+      ...(request.refund?.toObject ? request.refund.toObject() : request.refund || {}),
+      status: "Resolved",
+      payoutDate: resolvedPayoutDate,
+      payoutReference: payoutReference !== undefined ? String(payoutReference || "").trim() : (request.refund?.payoutReference || ""),
+      payoutProof: payoutProof !== undefined ? String(payoutProof || "").trim() : (request.refund?.payoutProof || ""),
+      ownerNote: String(resolutionNote).trim(),
+      dispute: {
+        ...(request.refund?.dispute?.toObject ? request.refund.dispute.toObject() : request.refund?.dispute || {}),
+        status: "Resolved",
+        resolvedAt: new Date(),
+        ownerResolutionNote: String(resolutionNote).trim(),
+      },
+    };
+
+    const updated = await MoveOutRequest.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user.userId },
+      { refund: nextRefund },
+      { new: true }
+    )
+      .populate("tenant", "name email phone")
+      .populate("property", "propertyType address")
+      .populate("lease", "leaseStartDate leaseEndDate rentAmount");
+
+    await createNotification({
+      recipient: updated.tenant?._id,
+      role: "tenant",
+      title: "Refund dispute resolved by owner",
+      message: "Owner submitted a resolution for your refund dispute. Please review details.",
+      type: "moveout",
+      actionPath: "/tenant/move-out",
+      metadata: { requestId: updated._id, refundStatus: updated.refund?.status || "Resolved" },
+    });
+
+    await runLeaseLifecycleAutomation(updated.lease?._id || updated.lease);
+
+    res.status(StatusCodes.OK).json({ message: "Refund dispute resolved.", request: updated });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
   }
@@ -3506,6 +4256,8 @@ const uploadTenantComplianceDocument = async (req, res) => {
       metadata: { documentId: doc._id },
     });
 
+    await runLeaseLifecycleAutomation(lease._id);
+
     res.status(StatusCodes.CREATED).json({ message: "Document uploaded.", document: doc });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -3539,6 +4291,13 @@ const createLeaseRenewal = async (req, res) => {
     const existingPending = await LeaseRenewal.findOne({ lease: leaseId, status: "Pending" });
     if (existingPending) {
       return res.status(StatusCodes.CONFLICT).json({ message: "A pending renewal proposal already exists." });
+    }
+
+    const activeMoveOut = await MoveOutRequest.findOne({ lease: leaseId, status: { $in: ["Pending", "Approved"] } }).select("_id");
+    if (activeMoveOut) {
+      return res.status(StatusCodes.CONFLICT).json({
+        message: "Cannot propose renewal while move-out request is active. Resolve move-out first.",
+      });
     }
 
     const currentLeaseEnd = startOfDay(lease.leaseEndDate);
@@ -3596,6 +4355,8 @@ const createLeaseRenewal = async (req, res) => {
       accent: "#7c3aed",
     });
 
+    await runLeaseLifecycleAutomation(lease._id);
+
     res.status(StatusCodes.CREATED).json({ message: "Renewal proposal created.", renewal });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -3639,6 +4400,8 @@ const cancelLeaseRenewal = async (req, res) => {
       metadata: { renewalId: renewal._id },
     });
 
+    await runLeaseLifecycleAutomation(renewal.lease);
+
     res.status(StatusCodes.OK).json({ message: "Renewal proposal cancelled.", renewal });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -3672,6 +4435,19 @@ const decideLeaseRenewal = async (req, res) => {
 
     const renewal = await LeaseRenewal.findOne({ _id: req.params.id, tenant: req.user.userId, status: "Pending" });
     if (!renewal) return res.status(StatusCodes.NOT_FOUND).json({ message: "Pending renewal not found." });
+
+    if (status === "Accepted") {
+      const conflictingMoveOut = await MoveOutRequest.findOne({
+        lease: renewal.lease,
+        status: { $in: ["Pending", "Approved"] },
+      }).select("_id status");
+
+      if (conflictingMoveOut) {
+        return res.status(StatusCodes.CONFLICT).json({
+          message: "Cannot accept renewal while an active move-out request exists. Resolve move-out first.",
+        });
+      }
+    }
 
     renewal.status = status;
     renewal.decisionNote = decisionNote || "";
@@ -3715,6 +4491,8 @@ const decideLeaseRenewal = async (req, res) => {
       actionPath: "/owner/tenants",
       accent: status === "Accepted" ? "#16a34a" : "#dc2626",
     });
+
+    await runLeaseLifecycleAutomation(renewal.lease);
 
     res.status(StatusCodes.OK).json({ message: `Renewal ${status.toLowerCase()}.`, renewal });
   } catch (err) {
@@ -3992,6 +4770,8 @@ const verifyComplianceDocument = async (req, res) => {
       metadata: { documentId: doc._id, verificationStatus },
     });
 
+    await runLeaseLifecycleAutomation(doc.lease);
+
     res.status(StatusCodes.OK).json({ message: "Document verification updated.", document: doc });
   } catch (err) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: err.message });
@@ -4132,6 +4912,16 @@ const generateFeaturesDocument = async (req, res) => {
   try {
     const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
     const filename = `portal-features-${Date.now()}.pdf`;
+    const generatedAt = new Date();
+
+    const [ownersCount, tenantsCount, propertiesCount, activeLeasesCount, activeMoveOutCount, pendingRenewalsCount] = await Promise.all([
+      User.countDocuments({ role: "owner", isActive: true }),
+      User.countDocuments({ role: "tenant", isActive: true }),
+      Property.countDocuments({ isActive: true }),
+      Lease.countDocuments({ isActive: true }),
+      MoveOutRequest.countDocuments({ status: { $in: ["Pending", "Approved"] } }),
+      LeaseRenewal.countDocuments({ status: "Pending" }),
+    ]);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
@@ -4234,29 +5024,35 @@ const generateFeaturesDocument = async (req, res) => {
     };
 
     // ============ TITLE PAGE ============
-    doc.fontSize(40).font("Helvetica-Bold").fillColor("#1e40af").text("Property Management Portal", { align: "center" });
+    doc.fontSize(36).font("Helvetica-Bold").fillColor("#1e40af").text("Property Management Platform", { align: "center" });
     doc.moveDown(0.3);
-    doc.fontSize(14).font("Helvetica").fillColor("#64748b").text("Complete Feature Overview", { align: "center" });
+    doc.fontSize(14).font("Helvetica").fillColor("#64748b").text("Operational Capability Snapshot", { align: "center" });
 
     doc.moveDown(1.6);
     doc.fontSize(10.5).font("Helvetica").fillColor("#111827").text(
-      "This document summarizes core capabilities for Owners, Tenants, and end users on the platform.",
+      "This document is a generated capability snapshot. It is informational and should not be treated as product roadmap or implementation source-of-truth.",
       { align: "center", width: 420 }
+    );
+
+    doc.moveDown(0.8);
+    doc.fontSize(9.5).font("Helvetica").fillColor("#334155").text(
+      `Generated on ${generatedAt.toLocaleString()} | Active Owners: ${ownersCount} | Active Tenants: ${tenantsCount} | Active Properties: ${propertiesCount} | Active Leases: ${activeLeasesCount}`,
+      { align: "center", width: 440 }
     );
 
     doc.moveDown(1.4);
     const summaryPoints = [
-      "* Owner operations in one place: property, rent, lease, and maintenance workflows",
-      "* Tenant self-service journey: inquiry to rent payment, documents, and requests",
-      "* Better communication and transparency through notifications, receipts, and tracking",
-      "* Reporting and export options for quick business visibility",
+      `* Pending move-out workflows currently in progress: ${activeMoveOutCount}`,
+      `* Pending lease renewal proposals currently in progress: ${pendingRenewalsCount}`,
+      "* Data shown here is generated from current database state and configured modules",
+      "* Validate route/controller availability for release readiness and testing",
     ];
     doc.fontSize(9.5).font("Helvetica");
     const summaryTextHeight = summaryPoints.reduce((sum, line) => sum + doc.heightOfString(line, { width: 430 }), 0);
     const summaryBoxHeight = 28 + summaryTextHeight;
     const summaryTop = doc.y;
     doc.roundedRect(70, summaryTop, 455, summaryBoxHeight, 8).fillAndStroke("#eff6ff", "#bfdbfe");
-    doc.fontSize(10).font("Helvetica-Bold").fillColor("#1d4ed8").text("What This Portal Provides", 84, summaryTop + 12);
+    doc.fontSize(10).font("Helvetica-Bold").fillColor("#1d4ed8").text("Snapshot Notes", 84, summaryTop + 12);
     doc.y = summaryTop + 28;
     doc.fontSize(9.5).font("Helvetica").fillColor("#1e3a8a");
     summaryPoints.forEach((line) => {
@@ -6357,6 +7153,8 @@ module.exports = {
   // Auth
   signUp,
   signIn,
+  requestPasswordReset,
+  resetPassword,
   forgotPassword,
   getProfile,
   updateProfile,
@@ -6424,6 +7222,8 @@ module.exports = {
   deleteAdminVendor,
   getAdminVendorLeads,
   updateAdminVendorLeadStatus,
+  getAdminMoveOutRequests,
+  deleteAdminMoveOutRequest,
   getAdminStats,
   getAdminEntityList,
   updateAdminEntityStatus,
@@ -6445,9 +7245,13 @@ module.exports = {
   getTenantMaintenanceRequests,
   createMoveOutRequest,
   getTenantMoveOutRequests,
+  cancelTenantMoveOutRequest,
   getOwnerMoveOutRequests,
   decideMoveOutRequest,
   completeMoveOutRequest,
+  updateMoveOutRefundByOwner,
+  acknowledgeMoveOutRefundByTenant,
+  resolveMoveOutRefundDisputeByOwner,
   createLeaseRenewal,
   getOwnerLeaseRenewals,
   cancelLeaseRenewal,

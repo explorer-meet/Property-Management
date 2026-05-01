@@ -66,6 +66,7 @@ const tenantLinks = [
       { to: "/tenant/leases", label: "My Leases", icon: Home },
       { to: "/tenant/rent", label: "Rent & Payments", icon: DollarSign },
       { to: "/tenant/maintenance", label: "My Requests", icon: Wrench },
+      { to: "/tenant/move-out", label: "Move-Out Requests", icon: DoorOpen },
       { to: "/tenant/reviews", label: "My Reviews", icon: Star },
     ]
   },
@@ -135,7 +136,7 @@ const Sidebar = () => {
         setExpandedSections((prev) => ({ ...prev, [section.section]: true }));
       }
     });
-  }, [location.pathname, isOwner]);
+  }, [location.pathname, isOwner, isVendor]);
 
   const toggleSection = (section) => {
     setExpandedSections((prev) => ({

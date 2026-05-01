@@ -6,14 +6,39 @@ import api from "../../utils/api";
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", password: "", confirmPassword: "" });
+  const [step, setStep] = useState("request");
+  const [form, setForm] = useState({
+    email: "",
+    otp: "",
+    password: "",
+    confirmPassword: "",
+  });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = async (e) => {
+  const handleRequestReset = async (e) => {
+    e.preventDefault();
+
+    setLoading(true);
+    try {
+      const { data } = await api.post("/auth/forgot-password/request", {
+        email: form.email.trim(),
+      });
+
+      toast.success(data.message || "Reset instructions sent.");
+
+      setStep("reset");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to request reset code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
     e.preventDefault();
 
     if (form.password !== form.confirmPassword) {
@@ -23,9 +48,10 @@ const ForgotPassword = () => {
 
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/forgot-password", {
+      const { data } = await api.post("/auth/forgot-password/reset", {
         email: form.email.trim(),
-        password: form.password,
+        otp: form.otp.trim(),
+        newPassword: form.password,
         confirmPassword: form.confirmPassword,
       });
       toast.success(data.message || "Password reset successful.");
@@ -54,7 +80,7 @@ const ForgotPassword = () => {
           <p className="text-xs uppercase tracking-[0.18em] text-amber-100 font-semibold">Account Recovery</p>
           <h1 className="text-4xl font-extrabold leading-tight">Reset your password securely</h1>
           <p className="text-amber-100 text-sm leading-relaxed">
-            Enter your registered email and set a new password. You can sign in again immediately after reset.
+            Request a one-time OTP by email and enter it manually to set your new password.
           </p>
           <div className="rounded-2xl bg-white/10 border border-white/20 p-4 backdrop-blur-sm">
             <p className="text-sm text-amber-50 inline-flex items-center gap-2">
@@ -76,11 +102,17 @@ const ForgotPassword = () => {
             <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
               <KeyRound size={14} /> Forgot Password
             </div>
-            <h2 className="mt-3 text-3xl font-extrabold text-gray-900">Set a new password</h2>
-            <p className="text-gray-500 mt-2 text-sm">Use your account email and choose a strong password.</p>
+            <h2 className="mt-3 text-3xl font-extrabold text-gray-900">
+              {step === "request" ? "Request reset code" : "Verify and reset"}
+            </h2>
+            <p className="text-gray-500 mt-2 text-sm">
+              {step === "request"
+                ? "Enter your account email to receive OTP."
+                : "Enter OTP and your new password."}
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={step === "request" ? handleRequestReset : handleResetPassword} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email address</label>
               <div className="flex items-center rounded-xl border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-orange-500 focus-within:border-transparent">
@@ -99,51 +131,78 @@ const ForgotPassword = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">New Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  required
-                  minLength={6}
-                  placeholder="Min 6 characters"
-                  className="input-field pr-10"
-                />
-                <button type="button" onClick={() => setShowPassword((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
+            {step === "reset" ? (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">OTP</label>
+                  <input
+                    type="text"
+                    name="otp"
+                    value={form.otp}
+                    onChange={handleChange}
+                    required
+                    className="input-field"
+                    placeholder="6-digit OTP"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Confirm Password</label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="confirmPassword"
-                  value={form.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  minLength={6}
-                  placeholder="Re-enter new password"
-                  className="input-field pr-10"
-                />
-                <button type="button" onClick={() => setShowConfirmPassword((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">New Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      value={form.password}
+                      onChange={handleChange}
+                      required
+                      minLength={6}
+                      placeholder="Min 6 characters"
+                      className="input-field pr-10"
+                    />
+                    <button type="button" onClick={() => setShowPassword((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Confirm Password</label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      name="confirmPassword"
+                      value={form.confirmPassword}
+                      onChange={handleChange}
+                      required
+                      minLength={6}
+                      placeholder="Re-enter new password"
+                      className="input-field pr-10"
+                    />
+                    <button type="button" onClick={() => setShowConfirmPassword((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : null}
 
             <button
               type="submit"
               disabled={loading}
               className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-red-600 py-3 text-white font-semibold hover:from-orange-700 hover:to-red-700 transition-all shadow-lg shadow-orange-500/20 disabled:opacity-60"
             >
-              {loading ? "Resetting..." : "Reset Password"}
+              {loading ? "Processing..." : step === "request" ? "Send OTP" : "Reset Password"}
             </button>
+
+            {step === "reset" ? (
+              <button
+                type="button"
+                onClick={() => setStep("request")}
+                className="w-full rounded-xl border border-gray-300 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Request New OTP
+              </button>
+            ) : null}
           </form>
         </div>
       </div>

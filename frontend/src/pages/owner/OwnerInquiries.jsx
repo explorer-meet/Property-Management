@@ -207,7 +207,12 @@ const OwnerInquiries = () => {
                     <div>
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-gray-900">
-                          {inquiry.property?.propertyType || "Property"} - {inquiry.property?.address?.city || "N/A"}
+                          {inquiry.property?.propertyType || "Property"} - {[
+                            inquiry.property?.address?.street,
+                            inquiry.property?.address?.city,
+                            inquiry.property?.address?.state,
+                            inquiry.property?.address?.pincode,
+                          ].filter(Boolean).join(", ") || "Address not available"}
                         </p>
                         <StatusBadge status={inquiry.status || "New"} />
                       </div>

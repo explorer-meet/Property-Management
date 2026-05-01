@@ -10,6 +10,9 @@ import {
   BriefcaseBusiness,
   Phone,
   Mail,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { PageHeader, Modal, StatusBadge, EmptyState } from "../../components/UI";
 import api from "../../utils/api";
@@ -44,6 +47,7 @@ const TenantMaintenance = () => {
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [draftStatusFilter, setDraftStatusFilter] = useState("All");
   const [draftCategoryFilter, setDraftCategoryFilter] = useState("All");
   const [draftUrgencyFilter, setDraftUrgencyFilter] = useState("All");
@@ -169,97 +173,113 @@ const TenantMaintenance = () => {
         </div>
       </section>
 
-      <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Request Filters</p>
-            <h3 className="mt-1 text-lg font-bold text-gray-900">Filter by status, category and urgency</h3>
-          </div>
-          {hasActiveFilters ? (
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-              Active Filters
+      <div className="rounded-3xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {/* Filter toggle header */}
+        <button
+          type="button"
+          onClick={() => setShowFilters((v) => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <SlidersHorizontal size={16} className={hasActiveFilters ? "text-emerald-600" : "text-gray-500"} />
+            <span className={`text-sm font-semibold ${hasActiveFilters ? "text-emerald-700" : "text-gray-700"}`}>
+              Filters
             </span>
-          ) : null}
-        </div>
+            {hasActiveFilters && (
+              <span className="text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                Active
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-gray-400">
+            {hasActiveFilters && (
+              <span className="text-[11px] font-medium text-gray-500">
+                {[statusFilter !== "All" && statusFilter, categoryFilter !== "All" && categoryFilter, urgencyFilter !== "All" && urgencyFilter].filter(Boolean).join(" · ")}
+              </span>
+            )}
+            {showFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </div>
+        </button>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-red-50 border border-gray-100 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Status</p>
-            <div className="flex flex-wrap gap-2">
-              {["All", ...STATUS_OPTIONS].map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setDraftStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                    draftStatusFilter === status
-                      ? "bg-red-600 border-red-600 text-white shadow-sm"
-                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {status}
-                </button>
-              ))}
+        {/* Collapsible body */}
+        {showFilters && (
+          <div className="border-t border-gray-100 p-5 space-y-4">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-red-50 border border-gray-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Status</p>
+                <div className="flex flex-wrap gap-2">
+                  {["All", ...STATUS_OPTIONS].map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setDraftStatusFilter(status)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                        draftStatusFilter === status
+                          ? "bg-red-600 border-red-600 text-white shadow-sm"
+                          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50 border border-gray-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Category</p>
+                <div className="flex flex-wrap gap-2">
+                  {["All", ...CATEGORIES].map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setDraftCategoryFilter(category)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                        draftCategoryFilter === category
+                          ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50 border border-gray-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Urgency</p>
+                <div className="flex flex-wrap gap-2">
+                  {["All", ...URGENCY_OPTIONS].map((urgency) => (
+                    <button
+                      key={urgency}
+                      type="button"
+                      onClick={() => setDraftUrgencyFilter(urgency)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                        draftUrgencyFilter === urgency
+                          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
+                          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {urgency}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
+              <button type="button" onClick={resetFilters} className="btn-secondary">
+                Reset Filters
+              </button>
+              <button
+                type="button"
+                onClick={() => { applyFilters(); setShowFilters(false); }}
+                className="btn-primary"
+              >
+                Apply Filters
+              </button>
             </div>
           </div>
-
-          <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50 border border-gray-100 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Category</p>
-            <div className="flex flex-wrap gap-2">
-              {["All", ...CATEGORIES].map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  onClick={() => setDraftCategoryFilter(category)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                    draftCategoryFilter === category
-                      ? "bg-blue-600 border-blue-600 text-white shadow-sm"
-                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50 border border-gray-100 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Urgency</p>
-            <div className="flex flex-wrap gap-2">
-              {["All", ...URGENCY_OPTIONS].map((urgency) => (
-                <button
-                  key={urgency}
-                  type="button"
-                  onClick={() => setDraftUrgencyFilter(urgency)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                    draftUrgencyFilter === urgency
-                      ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
-                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {urgency}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="btn-secondary"
-          >
-            Reset Filters
-          </button>
-          <button
-            type="button"
-            onClick={applyFilters}
-            className="btn-primary"
-          >
-            Apply Filters
-          </button>
-        </div>
+        )}
       </div>
 
       {visibleRequests.length === 0 ? (

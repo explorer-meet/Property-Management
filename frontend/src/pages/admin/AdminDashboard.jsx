@@ -5,6 +5,7 @@ import {
   ShieldCheck,
   Users,
   Wrench,
+  DoorOpen,
   Phone,
   Mail,
   Plus,
@@ -71,6 +72,10 @@ const AdminDashboard = () => {
   const [entityActionLoading, setEntityActionLoading] = useState({});
   const [insightStatusFilter, setInsightStatusFilter] = useState("all");
   const [actionConfirm, setActionConfirm] = useState(null);
+  const [moveOutRequests, setMoveOutRequests] = useState([]);
+  const [moveOutLoading, setMoveOutLoading] = useState(false);
+  const [deletingMoveOutId, setDeletingMoveOutId] = useState("");
+  const [moveOutDeleteConfirm, setMoveOutDeleteConfirm] = useState(null);
 
   // Filters
   const [vendorCategoryFilter, setVendorCategoryFilter] = useState("All");
@@ -126,10 +131,22 @@ const AdminDashboard = () => {
 
   const getEntityPreviewLabel = (type, item) => {
     if (type === "properties") {
-      return `${item.propertyType || "Property"} ${item.address?.city ? `(${item.address.city})` : ""}`.trim();
+      const propertyAddress = [
+        item.address?.street,
+        item.address?.city,
+        item.address?.state,
+        item.address?.pincode,
+      ].filter(Boolean).join(", ");
+      return `${item.propertyType || "Property"}${propertyAddress ? ` (${propertyAddress})` : ""}`.trim();
     }
     if (type === "leases") {
-      return `${item.tenant?.name || item.tenant?.email || "Tenant"} | ${item.property?.propertyType || "Property"}`;
+      const leasePropertyAddress = [
+        item.property?.address?.street,
+        item.property?.address?.city,
+        item.property?.address?.state,
+        item.property?.address?.pincode,
+      ].filter(Boolean).join(", ");
+      return `${item.tenant?.name || item.tenant?.email || "Tenant"} | ${item.property?.propertyType || "Property"}${leasePropertyAddress ? ` (${leasePropertyAddress})` : ""}`;
     }
     return item.name || [item.firstName, item.middleName, item.lastName].filter(Boolean).join(" ") || item.email || "User";
   };
@@ -163,19 +180,67 @@ const AdminDashboard = () => {
 
   const fetchData = async () => {
     try {
-      const [vendorRes, leadRes, statsRes] = await Promise.all([
+      const [vendorRes, leadRes, statsRes, moveOutRes] = await Promise.all([
         api.get("/admin/vendors"),
         api.get("/admin/vendor-leads"),
         api.get("/admin/stats"),
+        api.get("/admin/move-out"),
       ]);
       setVendors(vendorRes.data.vendors || []);
       setLeads(leadRes.data.leads || []);
       setStats(statsRes.data);
+      setMoveOutRequests(moveOutRes.data.requests || []);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to load admin data.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMoveOutRequests = async () => {
+    setMoveOutLoading(true);
+    try {
+      const { data } = await api.get("/admin/move-out");
+      setMoveOutRequests(data.requests || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load move-out requests.");
+    } finally {
+      setMoveOutLoading(false);
+    }
+  };
+
+  const deleteMoveOutRequest = async (id) => {
+    if (!id) return;
+
+    try {
+      setDeletingMoveOutId(id);
+      await api.delete(`/admin/move-out/${id}`);
+      toast.success("Move-out request deleted from database.");
+      setMoveOutRequests((prev) => prev.filter((item) => item._id !== id));
+      setStats((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          totalMoveOutRequests: Math.max(0, Number(prev.totalMoveOutRequests || 0) - 1),
+        };
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to delete move-out request.");
+    } finally {
+      setDeletingMoveOutId("");
+    }
+  };
+
+  const openMoveOutDeleteConfirm = (request) => {
+    if (!request?._id) return;
+    setMoveOutDeleteConfirm(request);
+  };
+
+  const confirmMoveOutDelete = async () => {
+    if (!moveOutDeleteConfirm?._id) return;
+    const deleteId = moveOutDeleteConfirm._id;
+    setMoveOutDeleteConfirm(null);
+    await deleteMoveOutRequest(deleteId);
   };
 
   useEffect(() => {
@@ -281,6 +346,7 @@ const AdminDashboard = () => {
         { key: "tenants", label: "Tenants", icon: Users, count: stats?.totalTenants ?? 0 },
         { key: "properties", label: "Properties", icon: HomeIcon, count: stats?.totalProperties ?? 0 },
         { key: "leases", label: "Leases", icon: ShieldCheck, count: stats?.totalLeases ?? 0 },
+        { key: "moveouts", label: "Move-Out Requests", icon: DoorOpen, count: stats?.totalMoveOutRequests ?? 0 },
       ],
     },
     {
@@ -299,6 +365,9 @@ const AdminDashboard = () => {
       setInsightStatusFilter("all");
       setInsightType(key);
       loadInsightList(key, "all");
+    }
+    if (key === "moveouts") {
+      loadMoveOutRequests();
     }
   };
 
@@ -434,12 +503,13 @@ const AdminDashboard = () => {
           {activeSection === "overview" && (
             <div className="space-y-6">
               {/* stat tiles */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
                 {[
                   { label: "Owners", value: stats?.totalOwners ?? "—", icon: UserCheck, bg: "bg-indigo-50", text: "text-indigo-600", border: "border-indigo-100", sectionKey: "owners" },
                   { label: "Tenants", value: stats?.totalTenants ?? "—", icon: Users, bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-100", sectionKey: "tenants" },
                   { label: "Properties", value: stats?.totalProperties ?? "—", icon: HomeIcon, bg: "bg-violet-50", text: "text-violet-600", border: "border-violet-100", sectionKey: "properties" },
                   { label: "Leases", value: stats?.totalLeases ?? "—", icon: ShieldCheck, bg: "bg-cyan-50", text: "text-cyan-700", border: "border-cyan-100", sectionKey: "leases" },
+                  { label: "Move-Out", value: stats?.totalMoveOutRequests ?? "—", icon: DoorOpen, bg: "bg-rose-50", text: "text-rose-600", border: "border-rose-100", sectionKey: "moveouts" },
                   { label: "Active Vendors", value: activeVendors, icon: Wrench, bg: "bg-emerald-50", text: "text-emerald-600", border: "border-emerald-100", sectionKey: "vendors" },
                   { label: "New Leads", value: newLeads, icon: TrendingUp, bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-100", sectionKey: "leads" },
                 ].map(({ label, value, icon: Icon, bg, text, border, sectionKey }) => (
@@ -523,6 +593,76 @@ const AdminDashboard = () => {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "moveouts" && (
+            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-rose-50/40 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <DoorOpen size={16} className="text-rose-500" />
+                  <h2 className="font-bold text-gray-900">Move-Out Requests</h2>
+                  <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">{moveOutRequests.length}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadMoveOutRequests}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <div className="p-5">
+                {moveOutLoading ? (
+                  <div className="py-16 text-center text-sm text-gray-500">
+                    <div className="w-8 h-8 border-4 border-rose-200 border-t-rose-600 rounded-full animate-spin mx-auto mb-3" />
+                    Loading move-out requests...
+                  </div>
+                ) : moveOutRequests.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-gray-500 rounded-xl border border-dashed border-gray-200 bg-gray-50">
+                    No move-out requests found.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {moveOutRequests.map((request, index) => (
+                      <div key={request._id} className="rounded-xl border border-gray-200 bg-white p-4">
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                          <div className="space-y-1.5 min-w-0">
+                            <p className="text-xs font-semibold text-gray-400">#{index + 1}</p>
+                            <p className="text-sm font-bold text-gray-900">
+                              {request.tenant?.name || request.tenant?.email || "Tenant"} {"->"} {request.property?.propertyType || "Property"}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {[
+                                request.property?.address?.street,
+                                request.property?.address?.city,
+                                request.property?.address?.state,
+                                request.property?.address?.pincode,
+                              ].filter(Boolean).join(", ") || "Address not available"}
+                            </p>
+                            <p className="text-xs text-gray-500">Status: <span className="font-semibold text-gray-700">{request.status || "Pending"}</span></p>
+                            <p className="text-xs text-gray-500">Requested Date: {request.requestedMoveOutDate ? new Date(request.requestedMoveOutDate).toLocaleDateString() : "N/A"}</p>
+                            <p className="text-xs text-gray-500">Owner: {request.owner?.name || request.owner?.email || "N/A"}</p>
+                            {request.reason ? <p className="text-xs text-gray-600">Reason: {request.reason}</p> : null}
+                          </div>
+
+                          <div className="shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openMoveOutDeleteConfirm(request)}
+                              disabled={deletingMoveOutId === request._id}
+                              className="px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                            >
+                              {deletingMoveOutId === request._id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -616,15 +756,24 @@ const AdminDashboard = () => {
                                       <>
                                         <p className="text-sm font-bold text-gray-900 truncate">Property: {item.propertyType || "N/A"}</p>
                                         <p className="text-xs text-gray-500 truncate">
-                                          {(item.address?.street || "").trim() || "Address not provided"}
-                                          {item.address?.city ? `, ${item.address.city}` : ""}
+                                          {[
+                                            item.address?.street,
+                                            item.address?.city,
+                                            item.address?.state,
+                                            item.address?.pincode,
+                                          ].filter(Boolean).join(", ") || "Address not provided"}
                                         </p>
                                       </>
                                     ) : activeSection === "leases" ? (
                                       <>
                                         <p className="text-sm font-bold text-gray-900 truncate">Lease: {item.tenant?.name || item.tenant?.email || "Tenant N/A"}</p>
                                         <p className="text-xs text-gray-500 truncate">
-                                          {item.property?.propertyType || "Property"} | {item.owner?.name || item.owner?.email || "Owner N/A"}
+                                          {item.property?.propertyType || "Property"} - {[
+                                            item.property?.address?.street,
+                                            item.property?.address?.city,
+                                            item.property?.address?.state,
+                                            item.property?.address?.pincode,
+                                          ].filter(Boolean).join(", ") || "Address not available"} | {item.owner?.name || item.owner?.email || "Owner N/A"}
                                         </p>
                                       </>
                                     ) : (
@@ -991,6 +1140,50 @@ const AdminDashboard = () => {
               <button type="button" onClick={confirmEntityAction}
                 className={`px-3.5 py-2 rounded-lg text-sm font-semibold text-white ${actionConfirm.action === "delete" ? "bg-rose-600 hover:bg-rose-700" : "bg-amber-600 hover:bg-amber-700"}`}>
                 Confirm {actionConfirm.action === "delete" ? "Delete" : "Deactivate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Move-Out Delete Confirm Modal ────────────────────── */}
+      {moveOutDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/55 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b bg-rose-50 border-rose-100">
+              <h3 className="text-sm font-bold text-rose-800">Confirm Delete</h3>
+              <p className="text-xs text-gray-600 mt-1">This will permanently remove this move-out request from database.</p>
+            </div>
+            <div className="px-5 py-4 space-y-2 text-sm text-gray-700">
+              <p>Tenant: <span className="font-semibold text-gray-900">{moveOutDeleteConfirm.tenant?.name || moveOutDeleteConfirm.tenant?.email || "N/A"}</span></p>
+              <p>Owner: <span className="font-semibold text-gray-900">{moveOutDeleteConfirm.owner?.name || moveOutDeleteConfirm.owner?.email || "N/A"}</span></p>
+              <p>Property: <span className="font-semibold text-gray-900">{moveOutDeleteConfirm.property?.propertyType || "Property"}</span></p>
+              <p>Address: <span className="font-semibold text-gray-900">{[
+                moveOutDeleteConfirm.property?.address?.street,
+                moveOutDeleteConfirm.property?.address?.city,
+                moveOutDeleteConfirm.property?.address?.state,
+                moveOutDeleteConfirm.property?.address?.pincode,
+              ].filter(Boolean).join(", ") || "N/A"}</span></p>
+              <p>Status: <span className="font-semibold text-gray-900">{moveOutDeleteConfirm.status || "Pending"}</span></p>
+              <p>Requested Date: <span className="font-semibold text-gray-900">{moveOutDeleteConfirm.requestedMoveOutDate ? new Date(moveOutDeleteConfirm.requestedMoveOutDate).toLocaleDateString() : "N/A"}</span></p>
+              {moveOutDeleteConfirm.reason ? (
+                <p>Reason: <span className="font-semibold text-gray-900">{moveOutDeleteConfirm.reason}</span></p>
+              ) : null}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMoveOutDeleteConfirm(null)}
+                className="px-3.5 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmMoveOutDelete}
+                className="px-3.5 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700"
+              >
+                Confirm Delete
               </button>
             </div>
           </div>

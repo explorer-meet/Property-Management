@@ -5,6 +5,7 @@ import {
   UserX,
   Users,
   Search,
+  AlertTriangle,
   Home,
   Wallet,
   CalendarClock,
@@ -233,6 +234,18 @@ const TenantsLeases = () => {
     return end >= now && end <= now + thirtyDays;
   };
 
+  const isExpiredLease = (lease) => {
+    const leaseEnd = new Date(lease.leaseEndDate);
+    if (Number.isNaN(leaseEnd.getTime())) return false;
+    const leaseEndDay = new Date(leaseEnd);
+    leaseEndDay.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return leaseEndDay < today;
+  };
+
+  const expiredLeasesCount = leases.filter((lease) => isExpiredLease(lease)).length;
+
   const normalizedSearch = search.trim().toLowerCase();
   const latestRenewalByLeaseId = renewals.reduce((acc, renewal) => {
     const leaseId = renewal.lease?._id || renewal.lease;
@@ -267,6 +280,7 @@ const TenantsLeases = () => {
     const matchesLeaseStatus = (() => {
       if (leaseStatusFilter === "All") return true;
       if (leaseStatusFilter === "ExpiringSoon") return isExpiringSoonLease(l);
+      if (leaseStatusFilter === "Expired") return isExpiredLease(l);
       if (leaseStatusFilter === "RenewalPending") return latestRenewalByLeaseId[l._id]?.status === "Pending";
       return true;
     })();
@@ -282,6 +296,7 @@ const TenantsLeases = () => {
   const leaseFilterCounts = {
     all: leases.length,
     expiringSoon: leases.filter((l) => isExpiringSoonLease(l)).length,
+    expired: leases.filter((l) => isExpiredLease(l)).length,
     renewalPending: leases.filter((l) => latestRenewalByLeaseId[l._id]?.status === "Pending").length,
   };
 
@@ -405,7 +420,7 @@ const TenantsLeases = () => {
         otherDeduction: completionForm.otherDeduction,
         settlementNote: completionForm.settlementNote,
       });
-      toast.success("Move-out completed. Lease closed and property marked vacant.");
+      toast.success("Move-out settlement recorded. Waiting for tenant acknowledgement.");
       setCompletionModal(false);
       setCompletionRequest(null);
       fetchAll();
@@ -580,6 +595,7 @@ const TenantsLeases = () => {
               <option value="Pending">Pending</option>
               <option value="Approved">Approved</option>
               <option value="Rejected">Rejected</option>
+              <option value="Acknowledgement Pending">Acknowledgement Pending</option>
               <option value="Completed">Completed</option>
             </select>
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -630,9 +646,13 @@ const TenantsLeases = () => {
                       </div>
                     ) : null}
 
-                    {request.status === "Completed" ? (
+                    {["Acknowledgement Pending", "Completed"].includes(request.status) ? (
                       <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                        <p>Completed on: {request.completedAt ? new Date(request.completedAt).toLocaleDateString() : "Not available"}</p>
+                        <p>
+                          {request.status === "Acknowledgement Pending"
+                            ? "Acknowledgement pending from tenant"
+                            : `Completed on: ${request.completedAt ? new Date(request.completedAt).toLocaleDateString() : "Not available"}`}
+                        </p>
                         <p className="mt-1">Completion note: {request.completionNote || "Not provided"}</p>
                       </div>
                     ) : null}
@@ -671,6 +691,22 @@ const TenantsLeases = () => {
 
       {sectionView === "leases" ? (
       <>
+      {expiredLeasesCount > 0 ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-red-100 p-2 text-red-700">
+              <AlertTriangle size={16} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-red-800">Expired lease alert</p>
+              <p className="mt-1 text-xs text-red-700">
+                {expiredLeasesCount} lease(s) have already passed the lease end date. Review renewal status and terminate lease if renewal is not completed within 7 days after lease end.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Search */}
       <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -722,6 +758,13 @@ const TenantsLeases = () => {
           </button>
           <button
             type="button"
+            onClick={() => setLeaseStatusFilter("Expired")}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${leaseStatusFilter === "Expired" ? "border-red-200 bg-red-50 text-red-700" : "border-gray-200 text-gray-600"}`}
+          >
+            Expired ({leaseFilterCounts.expired})
+          </button>
+          <button
+            type="button"
             onClick={() => setLeaseStatusFilter("RenewalPending")}
             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${leaseStatusFilter === "RenewalPending" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600"}`}
           >
@@ -735,8 +778,35 @@ const TenantsLeases = () => {
         <EmptyState message="No active leases. Assign a tenant to get started." icon={Users} />
       ) : (
         <div className="space-y-4">
-          {filteredLeases.map((l) => (
-            <div key={l._id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+          {filteredLeases.map((l) => {
+            const leaseEndDate = new Date(l.leaseEndDate);
+            const leaseEndDay = new Date(leaseEndDate);
+            leaseEndDay.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const expired = leaseEndDay < today;
+            const daysSinceExpiry = expired
+              ? Math.max(1, Math.ceil((today.getTime() - leaseEndDay.getTime()) / (1000 * 60 * 60 * 24)))
+              : 0;
+            const graceDeadline = new Date(leaseEndDay);
+            graceDeadline.setDate(graceDeadline.getDate() + 7);
+            const isBeyondGrace = expired && today > graceDeadline;
+
+            return (
+            <div key={l._id} className={`rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition-shadow ${expired ? "border-red-200" : "border-gray-100"}`}>
+              {expired ? (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                  <p className="font-semibold uppercase tracking-wider">Lease Expired</p>
+                  <p className="mt-1">
+                    Lease ended on {new Date(l.leaseEndDate).toLocaleDateString()} ({daysSinceExpiry} day(s) ago).
+                  </p>
+                  <p className="mt-1">
+                    {isBeyondGrace
+                      ? "Grace window exceeded. Take immediate action: finalize renewal or terminate this lease."
+                      : `If renewal is not completed by ${graceDeadline.toLocaleDateString()}, terminate this lease.`}
+                  </p>
+                </div>
+              ) : null}
               {latestRenewalByLeaseId[l._id] ? (
                 <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                   <p className="font-semibold uppercase tracking-wider">Renewal Timeline</p>
@@ -821,7 +891,7 @@ const TenantsLeases = () => {
                 </div>
               </div>
             </div>
-          ))}
+          );})}
         </div>
       )}
       </>
@@ -902,7 +972,14 @@ const TenantsLeases = () => {
             {terminateLeaseTarget ? (
               <div className="mt-2 text-xs text-rose-700 space-y-1">
                 <p>Tenant: {terminateLeaseTarget.tenant?.name || "N/A"}</p>
-                <p>Property: {terminateLeaseTarget.property?.propertyType || "Property"} - {terminateLeaseTarget.property?.address?.city || "N/A"}</p>
+                <p>
+                  Property: {terminateLeaseTarget.property?.propertyType || "Property"} - {[
+                    terminateLeaseTarget.property?.address?.street,
+                    terminateLeaseTarget.property?.address?.city,
+                    terminateLeaseTarget.property?.address?.state,
+                    terminateLeaseTarget.property?.address?.pincode,
+                  ].filter(Boolean).join(", ") || "Address not available"}
+                </p>
               </div>
             ) : null}
           </div>
@@ -1048,7 +1125,12 @@ const TenantsLeases = () => {
             </p>
             {completionRequest ? (
               <p className="mt-2 text-xs text-emerald-700">
-                Tenant: {completionRequest.tenant?.name || "-"} | Property: {completionRequest.property?.propertyType || "-"}, {completionRequest.property?.address?.city || "-"}
+                Tenant: {completionRequest.tenant?.name || "-"} | Property: {completionRequest.property?.propertyType || "-"}, {[
+                  completionRequest.property?.address?.street,
+                  completionRequest.property?.address?.city,
+                  completionRequest.property?.address?.state,
+                  completionRequest.property?.address?.pincode,
+                ].filter(Boolean).join(", ") || "Address not available"}
               </p>
             ) : null}
           </div>

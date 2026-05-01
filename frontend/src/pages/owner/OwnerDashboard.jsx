@@ -18,10 +18,8 @@ import {
   Building2,
   Users,
   Wallet,
-  AlertTriangle,
   Mail,
   MessageCircle,
-  Phone,
   Rocket,
   BellRing,
   Home,
@@ -138,63 +136,6 @@ const QuickNavCard = ({ title, subtitle, icon: Icon, onClick, accent = "blue" })
   );
 };
 
-const SignalCard = ({ eyebrow, value, detail, icon: Icon, tone = "slate", onClick }) => {
-  const toneMap = {
-    slate: {
-      shell: "border-slate-800 bg-slate-950 text-white",
-      chip: "border-white/10 bg-white/10 text-slate-100",
-      text: "text-slate-300",
-      icon: "bg-white/10 text-cyan-300",
-    },
-    amber: {
-      shell: "border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 text-amber-950",
-      chip: "border-amber-100 bg-white/70 text-amber-700",
-      text: "text-amber-700",
-      icon: "bg-amber-100 text-amber-700",
-    },
-    emerald: {
-      shell: "border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-950",
-      chip: "border-emerald-100 bg-white/70 text-emerald-700",
-      text: "text-emerald-700",
-      icon: "bg-emerald-100 text-emerald-700",
-    },
-    rose: {
-      shell: "border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 text-rose-950",
-      chip: "border-rose-100 bg-white/70 text-rose-700",
-      text: "text-rose-700",
-      icon: "bg-rose-100 text-rose-700",
-    },
-  };
-
-  const palette = toneMap[tone] || toneMap.slate;
-  const body = (
-    <div className={`rounded-[28px] border p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${palette.shell}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${palette.chip}`}>
-            {eyebrow}
-          </span>
-          <p className="mt-4 text-3xl font-extrabold leading-none">{value}</p>
-          <p className={`mt-2 text-xs leading-5 ${palette.text}`}>{detail}</p>
-        </div>
-        <div className={`rounded-2xl p-2.5 ${palette.icon}`}>
-          <Icon size={18} />
-        </div>
-      </div>
-    </div>
-  );
-
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className="w-full text-left transition-transform hover:-translate-y-1">
-        {body}
-      </button>
-    );
-  }
-
-  return body;
-};
-
 const OwnerDashboard = () => {
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
@@ -202,13 +143,13 @@ const OwnerDashboard = () => {
   const [stats, setStats] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [recentInquiries, setRecentInquiries] = useState([]);
-  const [updatingInquiryId, setUpdatingInquiryId] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeSectionTab, setActiveSectionTab] = useState("overview");
   const [rentRows, setRentRows] = useState([]);
   const [expenseRows, setExpenseRows] = useState([]);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -219,12 +160,14 @@ const OwnerDashboard = () => {
           { data: maintenanceData },
           { data: rentData },
           { data: expenseData },
+          { data: notifData },
         ] = await Promise.all([
           api.get("/owner/dashboard"),
           api.get("/owner/inquiries"),
           api.get("/owner/maintenance"),
           api.get("/owner/rent"),
           api.get("/owner/expenses"),
+          api.get("/notifications"),
         ]);
 
         const inquiries = inquiryData?.inquiries || [];
@@ -236,6 +179,7 @@ const OwnerDashboard = () => {
         setRecentInquiries(inquiries.slice(0, 8));
         setRentRows(rents);
         setExpenseRows(expenses);
+        setNotifications(notifData?.notifications || []);
 
         const overdueRents = rents.filter((rent) => rent.status === "Overdue");
         const highPriorityRequests = requests.filter((req) => ["High", "Emergency"].includes(req.urgency));
@@ -267,19 +211,6 @@ const OwnerDashboard = () => {
     fetchData();
   }, []);
 
-  const updateInquiryStatus = async (inquiryId, status) => {
-    try {
-      setUpdatingInquiryId(inquiryId);
-      await api.patch(`/owner/inquiries/${inquiryId}/status`, { status });
-      setRecentInquiries((prev) => prev.map((item) => (item._id === inquiryId ? { ...item, status } : item)));
-      toast.success("Inquiry status updated.");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Unable to update inquiry status.");
-    } finally {
-      setUpdatingInquiryId("");
-    }
-  };
-
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Loading dashboard...</div>;
 
   const ownerDisplayName = user?.firstName || user?.name?.split(" ")?.[0] || "Owner";
@@ -294,10 +225,12 @@ const OwnerDashboard = () => {
   const totalInquiries = Number(stats?.totalInquiries || 0);
   const newInquiries = Number(stats?.newInquiries || 0);
   const occupancyRate = totalProperties > 0 ? (occupiedProperties / totalProperties) * 100 : 0;
-  const vacancyRate = totalProperties > 0 ? (vacantProperties / totalProperties) * 100 : 0;
   const activeLeadCount = recentInquiries.filter((item) => item.status !== "Closed").length;
   const attentionCount = Number(openMaintenanceRequests) + Number(newInquiries) + (overdueRent > 0 ? 1 : 0);
   const portfolioHealthTone = occupancyRate >= 80 ? "Strong" : occupancyRate >= 60 ? "Stable" : "Needs Attention";
+
+  const unreadNotificationCount = notifications.filter((n) => !n.isRead).length;
+  const readNotificationCount = notifications.filter((n) => n.isRead).length;
 
   const inquiryTotals = recentInquiries.reduce(
     (acc, inquiry) => {
@@ -332,21 +265,18 @@ const OwnerDashboard = () => {
     { name: "Expenses", amount: totalExpenses },
   ];
 
-  const maintenanceCostByCategory = Object.entries(
-    expenseRows
-      .filter((row) => {
-        const source = `${row.category || ""} ${row.title || ""}`.toLowerCase();
-        return /(maintenance|repair|plumb|electri|hvac|service|clean|security|painting)/.test(source);
-      })
-      .reduce((acc, row) => {
-        const key = row.category || "Maintenance";
-        acc[key] = (acc[key] || 0) + Number(row.amount || 0);
-        return acc;
-      }, {})
+  const expenseCategoryData = Object.entries(
+    expenseRows.reduce((acc, row) => {
+      const key = row.category || "Other";
+      acc[key] = (acc[key] || 0) + Number(row.amount || 0);
+      return acc;
+    }, {})
   )
     .map(([name, amount]) => ({ name, amount }))
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 6);
+
+  const expenseCategoryPalette = ["#0f766e", "#2563eb", "#7c3aed", "#ea580c", "#db2777", "#4f46e5"];
 
   const handleExportExcel = async () => {
     try {
@@ -493,15 +423,15 @@ const OwnerDashboard = () => {
         <section className="relative overflow-hidden rounded-[32px] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] px-5 py-5 text-white shadow-[0_24px_56px_rgba(15,23,42,0.20)] sm:px-6 sm:py-6">
           <div className="absolute -left-8 top-0 h-44 w-44 rounded-full bg-cyan-400/20 blur-3xl" />
           <div className="absolute right-0 top-12 h-40 w-40 rounded-full bg-amber-400/15 blur-3xl" />
-          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-            <div>
+          <div className="grid gap-5 xl:grid-cols-12 xl:items-start">
+            <div className="xl:col-span-8">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100">
                 <Rocket size={12} /> Owner Operations Dashboard
               </div>
-              <h1 className="mt-3 max-w-2xl text-2xl font-extrabold tracking-tight text-white sm:text-[2.35rem]">
+              <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-white sm:text-[2.35rem]">
                 Cleaner control, faster actions, and a portfolio view that feels premium.
               </h1>
-              <p className="mt-2.5 max-w-xl text-sm leading-6 text-slate-300">
+              <p className="mt-2.5 text-sm leading-6 text-slate-300 xl:max-w-3xl">
                 Welcome back {ownerDisplayName}. The dashboard is now organized around what matters first: health, revenue, tenant demand, and operating risk.
               </p>
 
@@ -524,6 +454,33 @@ const OwnerDashboard = () => {
                 </div>
               </div>
 
+              <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => navigate("/owner/inquiries")}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-left transition-all hover:bg-white/15"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-100">Lead Queue</p>
+                  <p className="mt-1 text-sm font-bold text-white">{totalInquiries}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/owner/tenants")}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-left transition-all hover:bg-white/15"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-100">Lease Base</p>
+                  <p className="mt-1 text-sm font-bold text-white">{activeLeases} active lease{activeLeases === 1 ? "" : "s"}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/owner/rent")}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-left transition-all hover:bg-white/15"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-100">Collection Pressure</p>
+                  <p className="mt-1 text-sm font-bold text-white">{formatCurrency(pendingRent + overdueRent)}</p>
+                </button>
+              </div>
+
               <div className="mt-4 flex flex-wrap gap-2.5">
                 <button type="button" onClick={() => navigate("/owner/properties")} className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg transition-all hover:-translate-y-0.5">
                   Open Portfolio <ArrowRight size={15} />
@@ -534,10 +491,64 @@ const OwnerDashboard = () => {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
-              <SignalCard eyebrow="Revenue at risk" value={formatCurrency(overdueRent)} detail="Overdue rent that needs immediate follow-up." icon={AlertTriangle} tone="rose" onClick={() => navigate("/owner/rent")} />
-              <SignalCard eyebrow="Open maintenance" value={`${openMaintenanceRequests}`} detail="Requests still active in the queue." icon={Wrench} tone="amber" onClick={() => navigate("/owner/maintenance")} />
-              <SignalCard eyebrow="New inquiries" value={`${newInquiries}`} detail="Fresh leads waiting for outreach from your team." icon={BellRing} tone="emerald" onClick={() => navigate("/owner/inquiries")} />
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:col-span-4 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => navigate("/owner/rent")}
+                  className="rounded-xl border border-rose-200/50 bg-rose-500/10 px-3 py-2 text-left transition-all hover:bg-rose-500/20"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-200">Revenue at risk</p>
+                  <p className="mt-1 text-sm font-bold text-white">{formatCurrency(overdueRent)}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/owner/maintenance")}
+                  className="rounded-xl border border-amber-200/40 bg-amber-500/10 px-3 py-2 text-left transition-all hover:bg-amber-500/20"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">Open maintenance</p>
+                  <p className="mt-1 text-sm font-bold text-white">{openMaintenanceRequests}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/owner/inquiries")}
+                  className="rounded-xl border border-emerald-200/40 bg-emerald-500/10 px-3 py-2 text-left transition-all hover:bg-emerald-500/20"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">New inquiries</p>
+                  <p className="mt-1 text-sm font-bold text-white">{newInquiries}</p>
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3 sm:col-span-2">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-100">Reports & Downloads</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/owner/analytics")}
+                    className="rounded-lg border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/15"
+                  >
+                    Analytics
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    disabled={exportingExcel}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-200/30 bg-white/10 px-3 py-2 text-xs font-semibold text-cyan-50 hover:bg-white/15 disabled:opacity-60"
+                  >
+                    <Download size={13} /> {exportingExcel ? "Exporting..." : "Export CSV"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportPdf}
+                    disabled={exportingPdf}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-slate-900/70 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
+                  >
+                    <FileText size={13} /> {exportingPdf ? "Generating..." : "Export PDF"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -617,7 +628,7 @@ const OwnerDashboard = () => {
           <div className="space-y-6 rounded-[26px] bg-transparent p-3 sm:p-4">
             {activeSectionTab === "overview" && (
               <>
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                <div className="grid grid-cols-1 gap-5">
                   <section className="rounded-[28px] border border-white/70 bg-white/96 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
                     <div className="mb-5 flex items-center justify-between">
                       <div>
@@ -659,7 +670,7 @@ const OwnerDashboard = () => {
                         </div>
                       </div>
 
-                      <div className="rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 p-4 lg:col-span-2">
+                      <div className="rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 p-4">
                         <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Revenue vs Expenses</p>
                         <div className="mt-3 h-64">
                           <ResponsiveContainer width="100%" height="100%">
@@ -677,54 +688,60 @@ const OwnerDashboard = () => {
                           </ResponsiveContainer>
                         </div>
                       </div>
+
+                      <div className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="p-1.5 bg-amber-100 rounded-lg"><BellRing size={14} className="text-amber-600" /></div>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Notifications Pulse</p>
+                            <p className="text-[11px] text-amber-500">Read vs unread split</p>
+                          </div>
+                        </div>
+                        <div className="h-44">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RPieChart>
+                              <Pie
+                                data={(() => {
+                                  const d = [
+                                    { name: "Unread", value: unreadNotificationCount, color: "#f59e0b" },
+                                    { name: "Read", value: readNotificationCount, color: "#10b981" },
+                                  ].filter((item) => item.value > 0);
+                                  return d.length ? d : [{ name: "No Notifications", value: 1, color: "#cbd5e1" }];
+                                })()}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={44}
+                                outerRadius={66}
+                                paddingAngle={3}
+                                dataKey="value"
+                                stroke="none"
+                              >
+                                {[
+                                  { name: "Unread", value: unreadNotificationCount, color: "#f59e0b" },
+                                  { name: "Read", value: readNotificationCount, color: "#10b981" },
+                                ].filter((item) => item.value > 0).map((entry, i) => (
+                                  <Cell key={i} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value) => `${value} notification${value === 1 ? "" : "s"}`} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                            </RPieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="mt-1 grid grid-cols-1 gap-1 text-xs text-gray-700">
+                          <div className="flex justify-between"><span>Unread</span><span className="font-semibold text-amber-700">{unreadNotificationCount}</span></div>
+                          <div className="flex justify-between"><span>Read</span><span className="font-semibold text-emerald-700">{readNotificationCount}</span></div>
+                          <button
+                            type="button"
+                            onClick={() => navigate("/owner/notifications")}
+                            className="mt-1.5 w-full rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-left text-xs font-semibold text-amber-800 hover:bg-amber-50"
+                          >
+                            Open Notifications
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </section>
 
-                  <div className="space-y-5">
-                    <section className="rounded-[28px] border border-slate-900 bg-slate-950 p-6 text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)]">
-                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-white"><ClipboardList size={18} className="text-cyan-300" /> Owner Radar</h3>
-                      <div className="mt-4 space-y-3">
-                        <button type="button" onClick={() => navigate("/owner/inquiries")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Lead Queue</p>
-                          <p className="mt-1 text-lg font-bold text-white">{totalInquiries}</p>
-                          <p className="text-xs text-slate-300">{newInquiries} are new and still need first contact.</p>
-                        </button>
-                        <button type="button" onClick={() => navigate("/owner/tenants")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Lease Base</p>
-                          <p className="mt-1 text-lg font-bold text-white">{activeLeases} active lease{activeLeases === 1 ? "" : "s"}</p>
-                          <p className="text-xs text-slate-300">Review renewals and move-outs from the tenant workspace.</p>
-                        </button>
-                        <button type="button" onClick={() => navigate("/owner/rent")} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:bg-white/10">
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Collection Pressure</p>
-                          <p className="mt-1 text-lg font-bold text-white">{formatCurrency(pendingRent + overdueRent)}</p>
-                          <p className="text-xs text-slate-300">Pending plus overdue rent exposure across active cycles.</p>
-                        </button>
-                      </div>
-                    </section>
-
-                    <section className="rounded-[28px] border border-violet-100 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-slate-900"><Download size={18} className="text-violet-600" /> Reports & Downloads</h3>
-                      <p className="mt-2 text-sm text-slate-600">Export analytics snapshots and monthly statements in one click.</p>
-                      <div className="mt-4 grid grid-cols-1 gap-2">
-                        <button
-                          type="button"
-                          onClick={handleExportExcel}
-                          disabled={exportingExcel}
-                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-60"
-                        >
-                          <Download size={14} /> {exportingExcel ? "Exporting..." : "Export to Excel (CSV)"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleExportPdf}
-                          disabled={exportingPdf}
-                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
-                        >
-                          <FileText size={14} /> {exportingPdf ? "Generating..." : "Export Monthly PDF"}
-                        </button>
-                      </div>
-                    </section>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-[0.95fr_1.05fr]">
@@ -784,43 +801,6 @@ const OwnerDashboard = () => {
 
             {activeSectionTab === "leads" && (
               <>
-                <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><MessageCircle size={18} className="text-blue-600" /> Recent Property Inquiries</h3>
-                      <p className="mt-1 text-sm text-slate-500">A simplified queue for response management and status updates.</p>
-                    </div>
-                    <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-blue-700">{totalInquiries} total</span>
-                  </div>
-
-                  {recentInquiries.length === 0 ? (
-                    <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">No inquiries received yet.</div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                      {recentInquiries.map((inquiry) => (
-                        <div key={inquiry._id} className="rounded-3xl border border-slate-100 bg-gradient-to-br from-white via-white to-slate-50 p-4 shadow-sm">
-                          <p className="text-sm font-semibold text-gray-900">{inquiry.property?.propertyType || "Property"} - {inquiry.property?.address?.city || "N/A"}</p>
-                          <p className="mt-1 text-xs text-gray-600">Inquirer: {inquiry.inquirer?.name || "N/A"}</p>
-                          <p className="text-xs text-gray-500 inline-flex items-center gap-1"><Phone size={12} /> {inquiry.inquirer?.phone || "N/A"}</p>
-                          <div className="mt-3">
-                            <select
-                              value={inquiry.status || "New"}
-                              onChange={(e) => updateInquiryStatus(inquiry._id, e.target.value)}
-                              disabled={updatingInquiryId === inquiry._id}
-                              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2 text-[11px] font-semibold text-gray-700"
-                            >
-                              <option value="New">New</option>
-                              <option value="In Progress">In Progress</option>
-                              <option value="Contacted">Contacted</option>
-                              <option value="Closed">Closed</option>
-                            </select>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <MetricCard title="New Leads" value={inquiryTotals.new} subtitle="Need first response" icon={Mail} accent="amber" onClick={() => navigate("/owner/inquiries")} />
                   <MetricCard title="In Progress" value={inquiryTotals.inProgress} subtitle="Active negotiation" icon={Clock3} accent="blue" onClick={() => navigate("/owner/inquiries")} />
@@ -945,30 +925,78 @@ const OwnerDashboard = () => {
                     </div>
                   </section>
 
-                  <section className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h3 className="inline-flex items-center gap-2 text-base font-bold text-slate-900"><BarChart2 size={18} className="text-rose-600" /> Maintenance Cost Analysis</h3>
-                      <p className="text-xs font-medium text-slate-500">Top cost-driving categories</p>
+                  <section className="rounded-[28px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-cyan-50 p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="inline-flex items-center gap-2 text-base font-bold text-slate-900"><BarChart2 size={18} className="text-violet-600" /> Expenses by Category</h3>
+                        <p className="mt-1 text-xs font-medium text-slate-500">Top spend buckets across your logged owner expenses</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate("/owner/expenses")}
+                        className="rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50"
+                      >
+                        Open Expenses
+                      </button>
                     </div>
-                    <div className="h-72">
-                      {maintenanceCostByCategory.length === 0 ? (
-                        <div className="flex h-full items-center justify-center rounded-2xl border border-rose-100 bg-white text-sm text-rose-600">
-                          No categorized maintenance expenses yet.
-                        </div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={maintenanceCostByCategory} layout="vertical" margin={{ left: 10, right: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                            <XAxis type="number" tickFormatter={(v) => `?${Math.round(v / 1000)}k`} tick={{ fontSize: 11 }} />
-                            <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
-                            <Tooltip formatter={(value) => [formatCurrency(value), "Cost"]} />
-                            <Bar dataKey="amount" fill="#e11d48" radius={[0, 8, 8, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      )}
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+                      <div className="h-64">
+                        {expenseCategoryData.length === 0 ? (
+                          <div className="flex h-full items-center justify-center rounded-2xl border border-violet-100 bg-white text-sm text-violet-600">
+                            No categorized expenses available yet.
+                          </div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RPieChart>
+                              <Pie data={expenseCategoryData} dataKey="amount" nameKey="name" innerRadius={52} outerRadius={84} paddingAngle={3}>
+                                {expenseCategoryData.map((entry, index) => (
+                                  <Cell key={entry.name} fill={expenseCategoryPalette[index % expenseCategoryPalette.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value) => [formatCurrency(value), "Expense"]} />
+                            </RPieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        {expenseCategoryData.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-4 py-5 text-sm text-slate-500">
+                            Start logging expenses to unlock category-level insights on the dashboard.
+                          </div>
+                        ) : (
+                          expenseCategoryData.map((item, index) => {
+                            const share = totalExpenses > 0 ? (item.amount / totalExpenses) * 100 : 0;
+                            return (
+                              <div key={item.name} className="rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: expenseCategoryPalette[index % expenseCategoryPalette.length] }} />
+                                      <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
+                                    </div>
+                                    <p className="mt-1 text-xs text-slate-500">{share.toFixed(1)}% of total logged expenses</p>
+                                  </div>
+                                  <p className="shrink-0 text-sm font-extrabold text-slate-900">{formatCurrency(item.amount)}</p>
+                                </div>
+                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{
+                                      width: `${Math.min(share, 100)}%`,
+                                      backgroundColor: expenseCategoryPalette[index % expenseCategoryPalette.length],
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
                   </section>
                 </div>
+
               </>
             )}
           </div>

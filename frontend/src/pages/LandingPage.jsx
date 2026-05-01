@@ -1132,13 +1132,24 @@ const LandingPage = () => {
             Join hundreds of property owners who ditched spreadsheets for PropManager.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/register"
-              className="inline-flex items-center justify-center gap-2 bg-white text-blue-700 font-bold px-8 py-4 rounded-xl hover:bg-blue-50 transition-colors shadow-xl text-base group"
-            >
-              Get Started Free
-              <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
+            {isLoggedIn ? (
+              <button
+                type="button"
+                onClick={() => navigate(dashboardPath)}
+                className="inline-flex items-center justify-center gap-2 bg-white text-blue-700 font-bold px-8 py-4 rounded-xl hover:bg-blue-50 transition-colors shadow-xl text-base group"
+              >
+                Open Dashboard
+                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+              </button>
+            ) : (
+              <Link
+                to="/register"
+                className="inline-flex items-center justify-center gap-2 bg-white text-blue-700 font-bold px-8 py-4 rounded-xl hover:bg-blue-50 transition-colors shadow-xl text-base group"
+              >
+                Get Started Free
+                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+              </Link>
+            )}
             <button
               onClick={handleDownloadFeatures}
               className="inline-flex items-center justify-center gap-2 bg-blue-600 border-2 border-white/30 hover:bg-blue-700 hover:border-white text-white font-bold px-8 py-4 rounded-xl transition-colors text-base group"
@@ -1146,12 +1157,22 @@ const LandingPage = () => {
               Download Features PDF
               <Download size={18} className="group-hover:scale-110 transition-transform" />
             </button>
-            <Link
-              to="/login"
-              className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-white/50 hover:border-white text-white font-bold px-8 py-4 rounded-xl transition-colors text-base"
-            >
-              Sign In
-            </Link>
+            {isLoggedIn ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-white/50 hover:border-white text-white font-bold px-8 py-4 rounded-xl transition-colors text-base"
+              >
+                Logout
+              </button>
+            ) : (
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-white/50 hover:border-white text-white font-bold px-8 py-4 rounded-xl transition-colors text-base"
+              >
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
       </section>

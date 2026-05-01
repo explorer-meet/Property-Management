@@ -28,6 +28,10 @@ const userSchema = new mongoose.Schema(
       upiId: { type: String, trim: true, default: "" },
       qrCodeImageUrl: { type: String, trim: true, default: "" },
     },
+    passwordResetOtpHash: { type: String, trim: true, default: "" },
+    passwordResetExpiresAt: { type: Date },
+    passwordResetRequestedAt: { type: Date },
+    passwordResetAttempts: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

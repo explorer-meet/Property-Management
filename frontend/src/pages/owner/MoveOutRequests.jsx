@@ -11,8 +11,10 @@ const MoveOutRequests = () => {
   const [saving, setSaving] = useState(false);
   const [decisionModal, setDecisionModal] = useState(false);
   const [completionModal, setCompletionModal] = useState(false);
+  const [refundModal, setRefundModal] = useState(false);
   const [activeRequest, setActiveRequest] = useState(null);
   const [completionRequest, setCompletionRequest] = useState(null);
+  const [refundRequest, setRefundRequest] = useState(null);
   const [decisionForm, setDecisionForm] = useState({
     status: "Approved",
     approvedLastStayingDate: "",
@@ -25,6 +27,14 @@ const MoveOutRequests = () => {
     maintenanceDeduction: "0",
     otherDeduction: "0",
     settlementNote: "",
+  });
+  const [refundForm, setRefundForm] = useState({
+    status: "PendingProcessing",
+    payoutDate: "",
+    payoutReference: "",
+    payoutProof: "",
+    ownerNote: "",
+    resolutionNote: "",
   });
 
   const fetchRequests = async () => {
@@ -98,7 +108,7 @@ const MoveOutRequests = () => {
         otherDeduction: completionForm.otherDeduction,
         settlementNote: completionForm.settlementNote,
       });
-      toast.success("Move-out completed. Lease closed and property marked vacant.");
+      toast.success("Move-out settlement recorded. Waiting for tenant acknowledgement.");
       setCompletionModal(false);
       setCompletionRequest(null);
       fetchRequests();
@@ -109,8 +119,66 @@ const MoveOutRequests = () => {
     }
   };
 
+  const openRefundModal = (request) => {
+    setRefundRequest(request);
+    setRefundForm({
+      status: request.refund?.status || "PendingProcessing",
+      payoutDate: request.refund?.payoutDate ? request.refund.payoutDate.slice(0, 10) : "",
+      payoutReference: request.refund?.payoutReference || "",
+      payoutProof: request.refund?.payoutProof || "",
+      ownerNote: request.refund?.ownerNote || "",
+      resolutionNote: "",
+    });
+    setRefundModal(true);
+  };
+
+  const submitRefundUpdate = async (e) => {
+    e.preventDefault();
+    if (!refundRequest?._id) return;
+    try {
+      setSaving(true);
+      await api.patch(`/owner/move-out/${refundRequest._id}/refund`, {
+        status: refundForm.status,
+        payoutDate: refundForm.payoutDate || undefined,
+        payoutReference: refundForm.payoutReference,
+        payoutProof: refundForm.payoutProof,
+        ownerNote: refundForm.ownerNote,
+      });
+      toast.success("Refund details updated.");
+      setRefundModal(false);
+      setRefundRequest(null);
+      fetchRequests();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update refund details.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resolveRefundDispute = async () => {
+    if (!refundRequest?._id) return;
+    try {
+      setSaving(true);
+      await api.patch(`/owner/move-out/${refundRequest._id}/refund/dispute/resolve`, {
+        resolutionNote: refundForm.resolutionNote,
+        payoutDate: refundForm.payoutDate || undefined,
+        payoutReference: refundForm.payoutReference,
+        payoutProof: refundForm.payoutProof,
+      });
+      toast.success("Refund dispute resolved.");
+      setRefundModal(false);
+      setRefundRequest(null);
+      fetchRequests();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to resolve dispute.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const pendingCount = requests.filter((r) => r.status === "Pending").length;
   const approvedCount = requests.filter((r) => r.status === "Approved").length;
+  const acknowledgementPendingCount = requests.filter((r) => r.status === "Acknowledgement Pending").length;
   const completedCount = requests.filter((r) => r.status === "Completed").length;
 
   const groupedByProperty = requests.reduce((acc, request) => {
@@ -146,7 +214,7 @@ const MoveOutRequests = () => {
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-900 via-red-900 to-orange-800 px-6 py-7 sm:px-8 shadow-xl">
         <div className="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-rose-400/20 blur-2xl" />
         <div className="absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-orange-400/20 blur-2xl" />
-        <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-4 text-white">
+        <div className="relative grid grid-cols-2 sm:grid-cols-5 gap-4 text-white">
           <div className="col-span-2 sm:col-span-1">
             <p className="text-xs uppercase tracking-widest text-rose-200 font-semibold">Total</p>
             <p className="mt-2 text-4xl font-extrabold">{requests.length}</p>
@@ -163,6 +231,11 @@ const MoveOutRequests = () => {
             <p className="text-xs text-rose-100 mt-1">Ready for completion</p>
           </div>
           <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs uppercase tracking-wider text-yellow-200 font-semibold">Ack Pending</p>
+            <p className="mt-1 text-3xl font-extrabold text-yellow-200">{acknowledgementPendingCount}</p>
+            <p className="text-xs text-rose-100 mt-1">Waiting for tenant</p>
+          </div>
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
             <p className="text-xs uppercase tracking-wider text-emerald-200 font-semibold">Completed</p>
             <p className="mt-1 text-3xl font-extrabold text-emerald-300">{completedCount}</p>
             <p className="text-xs text-rose-100 mt-1">Finalized exits</p>
@@ -177,6 +250,7 @@ const MoveOutRequests = () => {
           {propertyGroups.map((group, index) => {
             const pendingInProperty = group.requests.filter((r) => r.status === "Pending").length;
             const approvedInProperty = group.requests.filter((r) => r.status === "Approved").length;
+            const ackPendingInProperty = group.requests.filter((r) => r.status === "Acknowledgement Pending").length;
             const completedInProperty = group.requests.filter((r) => r.status === "Completed").length;
 
             return (
@@ -196,6 +270,7 @@ const MoveOutRequests = () => {
                     <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide">
                       <span className="rounded-full bg-amber-400/20 px-2.5 py-1 text-amber-200">Pending {pendingInProperty}</span>
                       <span className="rounded-full bg-blue-400/20 px-2.5 py-1 text-blue-200">Approved {approvedInProperty}</span>
+                      <span className="rounded-full bg-yellow-400/20 px-2.5 py-1 text-yellow-200">Ack Pending {ackPendingInProperty}</span>
                       <span className="rounded-full bg-emerald-400/20 px-2.5 py-1 text-emerald-200">Completed {completedInProperty}</span>
                     </div>
                   </div>
@@ -236,10 +311,29 @@ const MoveOutRequests = () => {
                             </div>
                           ) : null}
 
-                          {request.status === "Completed" ? (
+                          {["Acknowledgement Pending", "Completed"].includes(request.status) ? (
                             <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                              <p>Completed on: {request.completedAt ? new Date(request.completedAt).toLocaleDateString() : "Not available"}</p>
+                              <p>
+                                {request.status === "Acknowledgement Pending"
+                                  ? "Acknowledgement pending from tenant"
+                                  : `Completed on: ${request.completedAt ? new Date(request.completedAt).toLocaleDateString() : "Not available"}`}
+                              </p>
                               <p className="mt-1">Completion note: {request.completionNote || "Not provided"}</p>
+                              <p className="mt-1">Refund status: {request.refund?.status || "NotInitiated"}</p>
+                              {request.refund?.payoutDate ? (
+                                <p className="mt-1">Payout date: {new Date(request.refund.payoutDate).toLocaleDateString()}</p>
+                              ) : null}
+                              {request.refund?.payoutReference ? (
+                                <p className="mt-1">Payout reference: {request.refund.payoutReference}</p>
+                              ) : null}
+                              {request.refund?.payoutProof ? (
+                                <p className="mt-1 break-all">Payout proof: {request.refund.payoutProof}</p>
+                              ) : null}
+                              {request.refund?.dispute?.status === "Open" ? (
+                                <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+                                  Dispute open: {request.refund?.dispute?.tenantMessage || "Tenant raised a dispute."}
+                                </p>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>
@@ -264,6 +358,16 @@ const MoveOutRequests = () => {
                               title={request.canComplete === false ? "Clear all pending/overdue rent before completing move-out" : "Mark move-out completed"}
                             >
                               Mark Completed
+                            </button>
+                          ) : null}
+
+                          {request.status === "Acknowledgement Pending" ? (
+                            <button
+                              type="button"
+                              onClick={() => openRefundModal(request)}
+                              className="btn-primary py-1.5 px-3 text-sm"
+                            >
+                              Update Refund
                             </button>
                           ) : null}
                         </div>
@@ -352,7 +456,12 @@ const MoveOutRequests = () => {
             </p>
             {completionRequest ? (
               <p className="mt-2 text-xs text-emerald-700">
-                Tenant: {completionRequest.tenant?.name || "-"} | Property: {completionRequest.property?.propertyType || "-"}, {completionRequest.property?.address?.city || "-"}
+                Tenant: {completionRequest.tenant?.name || "-"} | Property: {completionRequest.property?.propertyType || "-"}, {[
+                  completionRequest.property?.address?.street,
+                  completionRequest.property?.address?.city,
+                  completionRequest.property?.address?.state,
+                  completionRequest.property?.address?.pincode,
+                ].filter(Boolean).join(", ") || "Address not available"}
               </p>
             ) : null}
           </div>
@@ -391,6 +500,94 @@ const MoveOutRequests = () => {
             <button type="button" onClick={() => setCompletionModal(false)} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               {saving ? "Completing..." : "Confirm Completion"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={refundModal} onClose={() => setRefundModal(false)} title="Security Deposit Refund">
+        <form onSubmit={submitRefundUpdate} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Refund Status</label>
+            <select
+              value={refundForm.status}
+              onChange={(e) => setRefundForm({ ...refundForm, status: e.target.value })}
+              className="input-field"
+            >
+              <option value="PendingProcessing">Pending Processing</option>
+              <option value="Paid">Paid</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payout Date</label>
+              <input
+                type="date"
+                value={refundForm.payoutDate}
+                onChange={(e) => setRefundForm({ ...refundForm, payoutDate: e.target.value })}
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payout Reference</label>
+              <input
+                value={refundForm.payoutReference}
+                onChange={(e) => setRefundForm({ ...refundForm, payoutReference: e.target.value })}
+                className="input-field"
+                placeholder="UTR / Transaction reference"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Payout Proof</label>
+            <input
+              value={refundForm.payoutProof}
+              onChange={(e) => setRefundForm({ ...refundForm, payoutProof: e.target.value })}
+              className="input-field"
+              placeholder="Transfer proof URL or note"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Owner Note</label>
+            <textarea
+              rows={3}
+              value={refundForm.ownerNote}
+              onChange={(e) => setRefundForm({ ...refundForm, ownerNote: e.target.value })}
+              className="input-field"
+              placeholder="Settlement context for tenant"
+            />
+          </div>
+
+          {refundRequest?.refund?.dispute?.status === "Open" ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Open Dispute</p>
+              <p className="text-sm text-red-700">{refundRequest?.refund?.dispute?.tenantMessage || "Tenant reported an issue with refund payout."}</p>
+              <textarea
+                rows={3}
+                value={refundForm.resolutionNote}
+                onChange={(e) => setRefundForm({ ...refundForm, resolutionNote: e.target.value })}
+                className="input-field"
+                placeholder="Add resolution note"
+              />
+              <button
+                type="button"
+                onClick={resolveRefundDispute}
+                disabled={saving}
+                className="btn-secondary"
+              >
+                {saving ? "Resolving..." : "Resolve Dispute"}
+              </button>
+            </div>
+          ) : null}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setRefundModal(false)} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">
+              {saving ? "Saving..." : "Save Refund Update"}
             </button>
           </div>
         </form>

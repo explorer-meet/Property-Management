@@ -52,6 +52,7 @@ import TenantRent from "./pages/tenant/TenantRent";
 import TenantMaintenance from "./pages/tenant/TenantMaintenance";
 import TenantInquiries from "./pages/tenant/TenantInquiries";
 import TenantReview from "./pages/tenant/TenantReview";
+import TenantMoveOutRequests from "./pages/tenant/TenantMoveOutRequests";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 
 function App() {
@@ -157,6 +158,7 @@ function App() {
             <Route path="leases" element={<TenantLeases />} />
             <Route path="rent" element={<TenantRent />} />
             <Route path="maintenance" element={<TenantMaintenance />} />
+            <Route path="move-out" element={<TenantMoveOutRequests />} />
             <Route path="inquiries" element={<TenantInquiries />} />
             <Route path="reviews" element={<TenantReview />} />
             <Route path="notifications" element={<Notifications />} />

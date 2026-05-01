@@ -221,6 +221,7 @@ const STATUS_MAP = {
   Inactive:      { cls: "badge-gray",   dot: "bg-gray-400" },
   Approved:      { cls: "badge-green",  dot: "bg-emerald-500" },
   Rejected:      { cls: "badge-red",    dot: "bg-red-500" },
+  "Acknowledgement Pending": { cls: "badge-yellow", dot: "bg-amber-500" },
   Completed:     { cls: "badge-blue",   dot: "bg-blue-500" },
   Cancelled:     { cls: "badge-gray",   dot: "bg-gray-400" },
   Accepted:      { cls: "badge-green",  dot: "bg-emerald-500" },

@@ -2,77 +2,51 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
-  Building2,
-  Wrench,
   Calendar,
+  DoorOpen,
+  Wrench,
   Wallet,
   AlertTriangle,
-  CheckCircle2,
-  MapPin,
   Phone,
   Mail,
   BellRing,
+  Bell,
   Clock3,
   Siren,
   ScrollText,
-  DoorOpen,
-  ClipboardCheck,
-  FileText,
-  Upload,
-  ShieldCheck,
   MessageCircle,
-  Rocket,
   ArrowRight,
-  Sparkles,
 } from "lucide-react";
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+} from "recharts";
 import { Modal, StatusBadge } from "../../components/UI";
 import api from "../../utils/api";
 import { formatCurrency } from "../../utils/currency";
 import toast from "react-hot-toast";
 
-const toDateLabel = (value) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString();
-};
-
 const TenantDashboard = () => {
-  const DOC_TYPES = ["Rent Agreement", "Aadhaar Card", "PAN Card", "Police Verification", "Other"];
-  const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
-
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const [data, setData] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [rentHistory, setRentHistory] = useState([]);
+  const [maintenanceRequests, setMaintenanceRequests] = useState([]);
   const [moveOutRequests, setMoveOutRequests] = useState([]);
-  const [moveOutModal, setMoveOutModal] = useState(false);
-  const [submittingMoveOut, setSubmittingMoveOut] = useState(false);
-  const [moveOutForm, setMoveOutForm] = useState({ requestedMoveOutDate: "", reason: "" });
-  const [complianceDocs, setComplianceDocs] = useState([]);
-  const [renewals, setRenewals] = useState([]);
   const [inquiries, setInquiries] = useState([]);
-  const [docsModal, setDocsModal] = useState(false);
-  const [uploadingDoc, setUploadingDoc] = useState(false);
-  const [docForm, setDocForm] = useState({
-    documentType: "Aadhaar Card",
-    documentNumber: "",
-    notes: "",
-    document: null,
-  });
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetch = async () => {
       try {
-        const [{ data: res }, { data: rentRes }, { data: maintenanceRes }, { data: moveOutRes }, { data: docsRes }, { data: renewalRes }, { data: inquiryRes }] = await Promise.all([
+        const [{ data: res }, { data: rentRes }, { data: maintenanceRes }, { data: moveOutRes }, { data: inquiryRes }, { data: notificationRes }] = await Promise.all([
           api.get("/tenant/dashboard"),
           api.get("/tenant/rent-history"),
           api.get("/tenant/maintenance"),
           api.get("/tenant/move-out"),
-          api.get("/tenant/compliance-documents"),
-          api.get("/tenant/renewals"),
           api.get("/tenant/inquiries"),
+          api.get("/notifications"),
         ]);
 
         setData(res);
@@ -81,12 +55,12 @@ const TenantDashboard = () => {
         const rents = rentRes?.rents || [];
         const requests = maintenanceRes?.requests || [];
         const moveOutHistory = moveOutRes?.requests || [];
-        const docs = docsRes?.documents || [];
 
+        setRentHistory(rents);
+        setMaintenanceRequests(requests);
         setMoveOutRequests(moveOutHistory);
-        setComplianceDocs(docs);
-        setRenewals(renewalRes?.renewals || []);
         setInquiries(inquiryRes?.inquiries || []);
+        setNotifications(notificationRes?.notifications || []);
 
         const now = new Date();
         const within7Days = new Date();
@@ -183,154 +157,56 @@ const TenantDashboard = () => {
 
   const lease = data?.lease;
   const stats = data?.stats;
-  const pendingMoveOut = moveOutRequests.find((r) => r.status === "Pending");
-  const latestMoveOut = moveOutRequests[0];
-  const pendingRent = Number(stats?.pendingRent || 0);
-  const overdueRent = Number(stats?.overdueRent || 0);
-  const openRequests = Number(stats?.openRequests || 0);
+  const paidRent = rentHistory
+    .filter((rent) => rent.status === "Paid")
+    .reduce((sum, rent) => sum + Number(rent.amount || 0), 0);
+  const pendingRentByHistory = rentHistory
+    .filter((rent) => rent.status === "Pending")
+    .reduce((sum, rent) => sum + Number(rent.amount || 0), 0);
+  const overdueRentByHistory = rentHistory
+    .filter((rent) => rent.status === "Overdue")
+    .reduce((sum, rent) => sum + Number(rent.amount || 0), 0);
+
+  const pendingRent = Number(stats?.pendingRent || pendingRentByHistory || 0);
+  const overdueRent = Number(stats?.overdueRent || overdueRentByHistory || 0);
+  const openRequests = maintenanceRequests.filter((req) => ["Open", "In Progress"].includes(req.status)).length;
   const payableRent = pendingRent + overdueRent;
-  const sortedRenewals = [...renewals].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const renewalByPropertyId = sortedRenewals.reduce((acc, renewal) => {
-    const propertyId = renewal.property?._id;
-    if (!propertyId || acc[propertyId]) return acc;
-    acc[propertyId] = renewal;
+
+  const maintenanceStatusCount = maintenanceRequests.reduce((acc, req) => {
+    const key = req.status || "Open";
+    acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
-  const propertyTimelineTiles = Object.values(renewalByPropertyId);
-  const leaseDurations = (() => {
-    const durations = [];
-    if (lease) {
-      durations.push({
-        id: `active-${lease._id}`,
-        label: "Current Term",
-        rentAmount: lease.rentAmount,
-        startDate: lease.leaseStartDate,
-        endDate: lease.leaseEndDate,
-        status: "Active",
-      });
-    }
-    const samePropertyRenewals = sortedRenewals.filter((renewal) => {
-      if (!lease?.property?._id || !renewal.property?._id) return false;
-      return renewal.property._id === lease.property._id;
-    });
-    samePropertyRenewals.forEach((renewal) => {
-      durations.push({
-        id: renewal._id,
-        renewalId: renewal._id,
-        label: "Renewal Term",
-        rentAmount: renewal.proposedRentAmount,
-        startDate: renewal.proposedLeaseStartDate,
-        endDate: renewal.proposedLeaseEndDate,
-        status: renewal.status,
-        note: renewal.note || "",
-      });
-    });
-    const seen = new Set();
-    return durations.filter((duration) => {
-      const key = `${duration.startDate || ""}|${duration.endDate || ""}|${Number(duration.rentAmount || 0)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  })();
-  const propertyRenewalsForLease = sortedRenewals.filter((renewal) => {
-    if (!lease?.property?._id || !renewal.property?._id) return false;
-    return renewal.property._id === lease.property._id;
-  });
-  const successReadiness = Math.round(
-    ((lease ? 1 : 0) + (complianceDocs.length > 0 ? 1 : 0) + (inquiries.length > 0 ? 1 : 0) + (payableRent === 0 ? 1 : 0)) / 4 * 100
-  );
+  const totalMaintenanceRequests = maintenanceRequests.length;
+  const closedMaintenance = Number(maintenanceStatusCount.Resolved || 0) + Number(maintenanceStatusCount.Closed || 0);
+  const openMaintenance = Number(maintenanceStatusCount.Open || 0) + Number(maintenanceStatusCount["In Progress"] || 0);
+
+  const inquiryClosedCount = inquiries.filter((inq) => (inq.status || "") === "Closed").length;
+
+  const monthlyLeaseRent = Number(lease?.rentAmount || 0);
+  const leaseDaysRemaining = lease?.leaseEndDate
+    ? Math.max(0, Math.ceil((new Date(lease.leaseEndDate) - new Date()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const projectedMonthsRemaining = Math.ceil(leaseDaysRemaining / 30);
+  const projectedFutureRent = projectedMonthsRemaining > 0 ? projectedMonthsRemaining * monthlyLeaseRent : 0;
+
+  const totalTrackedRent = paidRent + pendingRent + overdueRent;
+  const activeLeaseCount = lease?.isActive === false ? 0 : lease ? 1 : 0;
+  const moveOutPendingCount = moveOutRequests.filter((r) => r.status === "Pending").length;
+  const moveOutApprovedCount = moveOutRequests.filter((r) => r.status === "Approved").length;
+  const moveOutCancelledCount = moveOutRequests.filter((r) => r.status === "Cancelled").length;
+  const moveOutCompletedCount = moveOutRequests.filter((r) => r.status === "Completed").length;
   const openInquiryCount = inquiries.filter((inq) => ["New", "In Progress"].includes(inq.status || "New")).length;
   const tenantDisplayName = user?.firstName || user?.name?.split(" ")?.[0] || "there";
-  const conversionSteps = [
-    {
-      id: "rent",
-      title: "Clear pending dues",
-      desc: "Pay on time to keep your tenancy profile healthy.",
-      done: payableRent === 0,
-      cta: "Pay Rent",
-      action: () => navigate("/tenant/rent"),
-    },
-    {
-      id: "docs",
-      title: "Upload compliance docs",
-      desc: "Verified documentation builds trust quickly.",
-      done: complianceDocs.length > 0,
-      cta: "Upload Docs",
-      action: () => setDocsModal(true),
-    },
-    {
-      id: "inquiry",
-      title: "Engage with owner",
-      desc: "Follow-up on inquiries to move deals faster.",
-      done: openInquiryCount === 0 && inquiries.length > 0,
-      cta: "Open Inquiries",
-      action: () => {
-        const section = document.getElementById("tenant-inquiries-section");
-        if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
-      },
-    },
-  ];
-  const handleMoveOutRequest = async (e) => {
-    e.preventDefault();
-    setSubmittingMoveOut(true);
+  const unreadNotificationCount = notifications.filter((item) => !item?.isRead).length;
+  const readNotificationCount = notifications.filter((item) => item?.isRead).length;
+
+  const markTenantNotificationRead = async (id) => {
     try {
-      await api.post("/tenant/move-out", moveOutForm);
-      toast.success("Move-out request submitted.");
-      setMoveOutModal(false);
-      setMoveOutForm({ requestedMoveOutDate: "", reason: "" });
-      const { data: moveOutRes } = await api.get("/tenant/move-out");
-      setMoveOutRequests(moveOutRes.requests || []);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to submit request.");
-    } finally {
-      setSubmittingMoveOut(false);
-    }
-  };
-
-  const uploadComplianceDoc = async (e) => {
-    e.preventDefault();
-    if (!docForm.document) {
-      toast.error("Please select a document file.");
-      return;
-    }
-
-    const payload = new FormData();
-    payload.append("documentType", docForm.documentType);
-    payload.append("documentNumber", docForm.documentNumber);
-    payload.append("notes", docForm.notes);
-    payload.append("document", docForm.document);
-
-    setUploadingDoc(true);
-    try {
-      await api.post("/tenant/compliance-documents", payload, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      toast.success("Document uploaded successfully.");
-      setDocForm({
-        documentType: "Aadhaar Card",
-        documentNumber: "",
-        notes: "",
-        document: null,
-      });
-      setDocsModal(false);
-      const { data: docsRes } = await api.get("/tenant/compliance-documents");
-      setComplianceDocs(docsRes.documents || []);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to upload document.");
-    } finally {
-      setUploadingDoc(false);
-    }
-  };
-
-  const respondRenewal = async (renewalId, status) => {
-    try {
-      await api.patch(`/tenant/renewals/${renewalId}/decision`, { status });
-      toast.success(`Renewal ${status.toLowerCase()}.`);
-      const { data: renewalRes } = await api.get("/tenant/renewals");
-      setRenewals(renewalRes?.renewals || []);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Unable to submit renewal decision.");
+      await api.patch(`/notifications/${id}/read`);
+      setNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, isRead: true } : n)));
+    } catch {
+      // silent
     }
   };
 
@@ -381,68 +257,302 @@ const TenantDashboard = () => {
         </button>
       </div>
 
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <div className="xl:col-span-2 rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
-                <Rocket size={18} className="text-indigo-600" /> Tenant Success Accelerator
-              </h3>
-              <p className="mt-1 text-xs text-gray-500">Complete these actions to improve owner confidence and close faster on opportunities.</p>
-            </div>
-            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-              Readiness {successReadiness}%
-            </span>
-          </div>
-
-          <div className="mb-4 h-2.5 rounded-full bg-gray-100">
-            <div
-              className="h-2.5 rounded-full bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500"
-              style={{ width: `${successReadiness}%` }}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {conversionSteps.map((step) => (
-              <div key={step.id} className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-slate-50 p-3.5">
-                <p className="text-sm font-semibold text-gray-900">{step.title}</p>
-                <p className="mt-1 text-xs text-gray-500">{step.desc}</p>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  {step.done ? (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-                      <CheckCircle2 size={12} /> Completed
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={step.action}
-                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
-                    >
-                      {step.cta} <ArrowRight size={12} />
-                    </button>
-                  )}
+      {/* ── Analytics Charts Row ── */}
+      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+        {/* Rent Collection: Paid vs Pending vs Overdue */}
+        {(() => {
+          const rentCollectionData = [
+            { name: "Paid", value: paidRent, color: "#10b981" },
+            { name: "Pending", value: pendingRent, color: "#f59e0b" },
+            { name: "Overdue", value: overdueRent, color: "#ef4444" },
+          ].filter((item) => item.value > 0);
+          const chartData = rentCollectionData.length ? rentCollectionData : [{ name: "No Records", value: 1, color: "#cbd5e1" }];
+          return (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-emerald-50 rounded-lg"><Wallet size={16} className="text-emerald-600" /></div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Rent Collection</p>
+                  <p className="text-xs text-gray-400">Paid vs due split</p>
                 </div>
               </div>
-            ))}
+              <ResponsiveContainer width="100%" height={165}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={72}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 grid grid-cols-1 gap-1 text-xs">
+                <div className="flex justify-between text-emerald-700"><span>Paid</span><span className="font-semibold">{formatCurrency(paidRent)}</span></div>
+                <div className="flex justify-between text-amber-700"><span>Pending</span><span className="font-semibold">{formatCurrency(pendingRent)}</span></div>
+                <div className="flex justify-between text-red-700"><span>Overdue</span><span className="font-semibold">{formatCurrency(overdueRent)}</span></div>
+                <div className="flex justify-between border-t border-gray-100 pt-1 text-gray-700"><span>Total Tracked</span><span className="font-bold">{formatCurrency(totalTrackedRent)}</span></div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Lease Projection: Completed vs Future */}
+        {(() => {
+          const projectionData = [
+            { name: "Paid To Date", value: paidRent, color: "#2563eb" },
+            { name: "Future Lease Projection", value: projectedFutureRent, color: "#a855f7" },
+            { name: "Outstanding Dues", value: payableRent, color: "#f97316" },
+          ].filter((item) => item.value > 0);
+          const chartData = projectionData.length ? projectionData : [{ name: "No Lease Data", value: 1, color: "#cbd5e1" }];
+          return (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-violet-50 rounded-lg"><Calendar size={16} className="text-violet-600" /></div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Lease Projection</p>
+                  <p className="text-xs text-gray-400">Future rent estimate</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={165}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={72}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-700">
+                <div className="flex justify-between"><span>Monthly Lease Rent</span><span className="font-semibold">{formatCurrency(monthlyLeaseRent)}</span></div>
+                <div className="flex justify-between"><span>Projected Months Left</span><span className="font-semibold">{projectedMonthsRemaining}</span></div>
+                <div className="flex justify-between"><span>Projected Future Rent</span><span className="font-semibold text-violet-700">{formatCurrency(projectedFutureRent)}</span></div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Request Portfolio: Maintenance + Inquiries */}
+        {(() => {
+          const requestMixData = [
+            { name: "Maintenance Open", value: openMaintenance, color: "#f59e0b" },
+            { name: "Maintenance Closed", value: closedMaintenance, color: "#10b981" },
+            { name: "Inquiry Open", value: openInquiryCount, color: "#3b82f6" },
+            { name: "Inquiry Closed", value: inquiryClosedCount, color: "#6b7280" },
+          ].filter((item) => item.value > 0);
+          const chartData = requestMixData.length ? requestMixData : [{ name: "No Requests", value: 1, color: "#cbd5e1" }];
+          return (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-blue-50 rounded-lg"><Wrench size={16} className="text-blue-600" /></div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Request Portfolio</p>
+                  <p className="text-xs text-gray-400">Maintenance and inquiry load</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={165}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={72}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value} request${value === 1 ? "" : "s"}`} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-700">
+                <div className="flex justify-between"><span>Maint. total</span><span className="font-semibold">{totalMaintenanceRequests}</span></div>
+                <div className="flex justify-between"><span>Maint. open</span><span className="font-semibold text-amber-700">{openMaintenance}</span></div>
+                <div className="flex justify-between"><span>Inquiry total</span><span className="font-semibold">{inquiries.length}</span></div>
+                <div className="flex justify-between"><span>Inquiry open</span><span className="font-semibold text-blue-700">{openInquiryCount}</span></div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Active Lease + Move-Out Tracker */}
+        {(() => {
+          const leaseMoveOutData = [
+            { name: "Active Lease", value: activeLeaseCount, color: "#10b981" },
+            { name: "Move-Out Pending", value: moveOutPendingCount, color: "#f59e0b" },
+            { name: "Move-Out Approved", value: moveOutApprovedCount, color: "#2563eb" },
+            { name: "Move-Out Cancelled", value: moveOutCancelledCount, color: "#6b7280" },
+            { name: "Move-Out Completed", value: moveOutCompletedCount, color: "#8b5cf6" },
+          ].filter((item) => item.value > 0);
+
+          const chartData = leaseMoveOutData.length ? leaseMoveOutData : [{ name: "No Lease/Move-Out", value: 1, color: "#cbd5e1" }];
+
+          return (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-rose-50 rounded-lg"><DoorOpen size={16} className="text-rose-600" /></div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Lease & Move-Out Tracker</p>
+                  <p className="text-xs text-gray-400">Lease status and move-out flow</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={165}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={72}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value} item${value === 1 ? "" : "s"}`} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-700">
+                <div className="flex justify-between"><span>Active Lease</span><span className="font-semibold text-emerald-700">{activeLeaseCount}</span></div>
+                <div className="flex justify-between"><span>Move-Out Pending</span><span className="font-semibold text-amber-700">{moveOutPendingCount}</span></div>
+                <div className="flex justify-between"><span>Move-Out Approved</span><span className="font-semibold text-blue-700">{moveOutApprovedCount}</span></div>
+                <div className="flex justify-between"><span>Move-Out Cancelled</span><span className="font-semibold text-gray-700">{moveOutCancelledCount}</span></div>
+                <div className="flex justify-between"><span>Move-Out Completed</span><span className="font-semibold text-violet-700">{moveOutCompletedCount}</span></div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {(() => {
+          const notificationData = [
+            { name: "Unread", value: unreadNotificationCount, color: "#f59e0b" },
+            { name: "Read", value: readNotificationCount, color: "#10b981" },
+          ].filter((item) => item.value > 0);
+          const chartData = notificationData.length ? notificationData : [{ name: "No Notifications", value: 1, color: "#cbd5e1" }];
+
+          return (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-amber-50 rounded-lg"><BellRing size={16} className="text-amber-600" /></div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Notifications Pulse</p>
+                  <p className="text-xs text-gray-400">Read vs unread split</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={165}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={72}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value} notification${value === 1 ? "" : "s"}`} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-700">
+                <div className="flex justify-between"><span>Unread</span><span className="font-semibold text-amber-700">{unreadNotificationCount}</span></div>
+                <div className="flex justify-between"><span>Read</span><span className="font-semibold text-emerald-700">{readNotificationCount}</span></div>
+                <button
+                  type="button"
+                  onClick={() => navigate("/tenant/notifications")}
+                  className="mt-2 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                >
+                  Open Notifications
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+      </section>
+
+      <section className="grid grid-cols-1 xl:grid-cols-[1.4fr_0.6fr] gap-5">
+        <div className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+              <DoorOpen size={18} className="text-indigo-600" /> Tenancy Impact Board
+            </h3>
+            <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-semibold text-gray-600">Live Status</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3.5">
+              <p className="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Financial Pressure</p>
+              <p className="text-lg font-bold text-emerald-800 mt-1">{formatCurrency(payableRent)}</p>
+              <p className="text-xs text-emerald-700 mt-1">Pending + overdue dues to clear</p>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-3.5">
+              <p className="text-xs uppercase tracking-wider text-amber-700 font-semibold">Maintenance Load</p>
+              <p className="text-lg font-bold text-amber-800 mt-1">{openMaintenance} open / {totalMaintenanceRequests} total</p>
+              <p className="text-xs text-amber-700 mt-1">Pending service tasks impacting comfort</p>
+            </div>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3.5">
+              <p className="text-xs uppercase tracking-wider text-blue-700 font-semibold">Owner Communication</p>
+              <p className="text-lg font-bold text-blue-800 mt-1">{openInquiryCount} active inquiry threads</p>
+              <p className="text-xs text-blue-700 mt-1">Open threads waiting for progress/closure</p>
+            </div>
+            <div className="rounded-xl border border-violet-100 bg-violet-50 p-3.5">
+              <p className="text-xs uppercase tracking-wider text-violet-700 font-semibold">Move-Out Pipeline</p>
+              <p className="text-lg font-bold text-violet-800 mt-1">{moveOutPendingCount + moveOutApprovedCount} in review</p>
+              <p className="text-xs text-violet-700 mt-1">Pending + approved move-out requests</p>
+            </div>
           </div>
         </div>
 
         <div className="rounded-2xl border border-cyan-100 bg-gradient-to-br from-cyan-50 via-blue-50 to-indigo-50 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
           <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
-            <Sparkles size={17} className="text-cyan-600" /> Why Owners Respond Faster
+            <MessageCircle size={17} className="text-cyan-600" /> Quick Actions
           </h3>
-          <div className="mt-3 space-y-2.5 text-sm text-gray-700">
-            <div className="rounded-lg border border-white/80 bg-white/80 p-2.5">On-time payments increase trust and approval speed.</div>
-            <div className="rounded-lg border border-white/80 bg-white/80 p-2.5">Clear documentation reduces verification delays.</div>
-            <div className="rounded-lg border border-white/80 bg-white/80 p-2.5">Active communication improves conversion of inquiries.</div>
+          <div className="mt-3 space-y-2.5">
+            <button type="button" onClick={() => navigate("/tenant/leases")} className="w-full rounded-lg border border-white/80 bg-white/85 px-3 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-white">
+              Open My Leases
+            </button>
+            <button type="button" onClick={() => navigate("/tenant/rent")} className="w-full rounded-lg border border-white/80 bg-white/85 px-3 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-white">
+              Pay / Track Rent
+            </button>
+            <button type="button" onClick={() => navigate("/tenant/maintenance")} className="w-full rounded-lg border border-white/80 bg-white/85 px-3 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-white">
+              Manage Maintenance
+            </button>
+            <button type="button" onClick={() => navigate("/tenant/move-out")} className="w-full rounded-lg border border-white/80 bg-white/85 px-3 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-white">
+              Track Move-Out Requests
+            </button>
+            <button type="button" onClick={() => navigate("/tenant/notifications")} className="w-full rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2.5 text-left text-sm font-medium text-amber-800 hover:bg-amber-100">
+              Notifications ({unreadNotificationCount} unread)
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:from-cyan-500 hover:to-blue-500"
-          >
-            Explore More Listings <ArrowRight size={13} />
-          </button>
         </div>
       </section>
 
@@ -498,6 +608,69 @@ const TenantDashboard = () => {
         )}
       </section>
 
+      {/* ── Recent Notifications ── */}
+      <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md">
+              <Bell size={17} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Recent Notifications</h3>
+              <p className="text-xs text-gray-500">{unreadNotificationCount} unread</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/tenant/notifications")}
+            className="rounded-xl border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+          >
+            View All
+          </button>
+        </div>
+        {notifications.length === 0 ? (
+          <div className="rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm text-gray-500">
+            No notifications yet.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {notifications.slice(0, 5).map((n) => (
+              <div
+                key={n._id}
+                className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${n.isRead ? "border-gray-100 bg-white" : "border-blue-200 bg-blue-50"}`}
+              >
+                <div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${n.isRead ? "bg-gray-300" : "bg-blue-500"}`} />
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm font-semibold ${n.isRead ? "text-gray-700" : "text-gray-900"}`}>{n.title}</p>
+                  <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{n.message}</p>
+                  <p className="mt-1 text-[11px] text-gray-400">{new Date(n.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {n.actionPath ? (
+                    <button
+                      type="button"
+                      onClick={() => { navigate(n.actionPath); markTenantNotificationRead(n._id); }}
+                      className="rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      Go
+                    </button>
+                  ) : null}
+                  {!n.isRead ? (
+                    <button
+                      type="button"
+                      onClick={() => markTenantNotificationRead(n._id)}
+                      className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Mark read
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
@@ -519,7 +692,12 @@ const TenantDashboard = () => {
                 <div className="flex flex-col gap-3">
                   <div>
                     <p className="text-sm font-semibold text-gray-900">
-                      {inquiry.property?.propertyType || "Property"} - {inquiry.property?.address?.city || "N/A"}
+                      {inquiry.property?.propertyType || "Property"} - {[
+                        inquiry.property?.address?.street,
+                        inquiry.property?.address?.city,
+                        inquiry.property?.address?.state,
+                        inquiry.property?.address?.pincode,
+                      ].filter(Boolean).join(", ") || "Address not available"}
                     </p>
                     <p className="mt-1 text-xs text-gray-600">Owner: {inquiry.owner?.name || "N/A"}</p>
                     <p className="text-xs text-gray-500">Email: {inquiry.owner?.email || "N/A"}</p>
@@ -551,385 +729,6 @@ const TenantDashboard = () => {
         )}
       </section>
 
-      {lease ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Property Info */}
-          <div className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="p-2 bg-blue-50 rounded-lg"><Building2 size={18} className="text-blue-600" /></div>
-              <h3 className="font-semibold text-gray-900">My Property</h3>
-              <StatusBadge status={lease.property?.status} />
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Type</span>
-                <span className="font-medium text-gray-900">{lease.property?.propertyType}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Address</span>
-                <span className="font-medium text-gray-900 text-right inline-flex items-start gap-1.5">
-                  <MapPin size={13} className="mt-0.5 text-gray-400" />
-                  <span>
-                  {lease.property?.address?.street}, {lease.property?.address?.city}
-                  </span>
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Rooms</span>
-                <span className="font-medium text-gray-900">{lease.property?.numberOfRooms}</span>
-              </div>
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold uppercase tracking-wider">Lease Journey Timeline</p>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">{leaseDurations.length} terms</span>
-                </div>
-                {leaseDurations.map((duration) => (
-                  <div key={duration.id} className={`rounded-md border px-2.5 py-2 ${duration.status === "Pending" ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-white"}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold text-emerald-900">{duration.label}</p>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                        duration.status === "Active" ? "bg-emerald-100 text-emerald-700" :
-                        duration.status === "Pending" ? "bg-amber-100 text-amber-700" :
-                        duration.status === "Accepted" ? "bg-blue-100 text-blue-700" :
-                        "bg-gray-100 text-gray-600"
-                      }`}>{duration.status}</span>
-                    </div>
-                    <p className="mt-1">{formatCurrency(duration.rentAmount || 0)} | {toDateLabel(duration.startDate)} &rarr; {toDateLabel(duration.endDate)}</p>
-                    {duration.note ? <p className="mt-1 text-[11px] text-amber-800">Owner note: {duration.note}</p> : null}
-                    {duration.status === "Pending" && duration.renewalId ? (
-                      <div className="mt-2.5 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => respondRenewal(duration.renewalId, "Accepted")}
-                          className="rounded-md border border-emerald-300 bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                        >
-                          Accept Renewal
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => respondRenewal(duration.renewalId, "Rejected")}
-                          className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-                {leaseDurations.length === 0 ? <p>No lease timeline available yet.</p> : null}
-              </div>
-
-              <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold uppercase tracking-wider">Move-In / Move-Out</p>
-                  {latestMoveOut ? <StatusBadge status={latestMoveOut.status} /> : null}
-                </div>
-                <p>Move In: {toDateLabel(lease.leaseStartDate || lease.createdAt)}</p>
-                <p>
-                  Move Out: {latestMoveOut ? toDateLabel(latestMoveOut.completedAt || latestMoveOut.approvedLastStayingDate || latestMoveOut.requestedMoveOutDate) : "Not requested"}
-                </p>
-                {latestMoveOut?.status === "Approved" && latestMoveOut?.closingFormalities ? (
-                  <p>Closing formalities: {latestMoveOut.closingFormalities}</p>
-                ) : null}
-                {latestMoveOut?.status === "Rejected" && latestMoveOut?.ownerNote ? (
-                  <p>Owner note: {latestMoveOut.ownerNote}</p>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setMoveOutModal(true)}
-                  disabled={!!pendingMoveOut}
-                  className="mt-1 rounded-md border border-indigo-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1"
-                >
-                  <DoorOpen size={12} /> {pendingMoveOut ? "Move-Out Pending" : "Request Move-Out"}
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const response = await fetch(
-                        `${(import.meta.env.VITE_API_URL || "http://localhost:5000/api")}/leases/${lease._id}/rent-agreement`,
-                        { headers: { Authorization: `Bearer ${localStorage.getItem("pms_token")}` } }
-                      );
-                      if (!response.ok) throw new Error();
-                      const blob = await response.blob();
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url; a.download = `rent-agreement-${lease._id}.pdf`;
-                      a.click(); URL.revokeObjectURL(url);
-                    } catch { toast.error("Unable to download agreement."); }
-                  }}
-                  className="mt-1 rounded-md border border-blue-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 inline-flex items-center gap-1"
-                >
-                  <FileText size={12} /> Download Rent Agreement
-                </button>
-              </div>
-
-
-              {lease.property?.description && (
-                <div className="pt-1">
-                  <span className="text-gray-500">Description</span>
-                  <p className="text-gray-700 mt-1 bg-gray-50 border border-gray-100 rounded-lg p-2.5">{lease.property.description}</p>
-                </div>
-              )}
-
-              <div className="pt-4 mt-2 border-t border-gray-100 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1.5">
-                    <ShieldCheck size={15} className="text-emerald-600" /> Compliance Documents
-                  </h4>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{complianceDocs.length} uploaded</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setDocsModal(true)}
-                  className="btn-primary inline-flex items-center gap-1.5 text-sm w-full justify-center"
-                >
-                  <Upload size={14} /> Upload Document
-                </button>
-
-                {complianceDocs.length === 0 ? (
-                  <p className="text-xs text-gray-500">No compliance documents uploaded yet.</p>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {complianceDocs.slice(0, 8).map((doc) => (
-                      <a
-                        key={doc._id}
-                        href={`${API_BASE}${doc.filePath}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block rounded-lg border border-gray-100 px-3 py-2 hover:bg-gray-50"
-                      >
-                        <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1.5">
-                          <FileText size={14} className="text-blue-600" /> {doc.documentType}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-1">Uploaded on {new Date(doc.createdAt).toLocaleDateString()}</p>
-                        {doc.documentNumber ? <p className="text-xs text-gray-500">No: {doc.documentNumber}</p> : null}
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Lease Info */}
-          <div className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="p-2 bg-green-50 rounded-lg"><Calendar size={18} className="text-green-600" /></div>
-              <h3 className="font-semibold text-gray-900">Lease Details</h3>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Monthly Rent</span>
-                <span className="font-semibold text-gray-900">{formatCurrency(lease.rentAmount)}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Security Deposit</span>
-                <span className="font-medium text-gray-900">{formatCurrency(lease.securityDeposit)}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Rent Due Day</span>
-                <span className="font-medium text-gray-900">{lease.rentDueDay} of every month</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Lease Start</span>
-                <span className="font-medium text-gray-900">{toDateLabel(lease.leaseStartDate)}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-gray-500">Lease End</span>
-                <span className="font-medium text-gray-900">{toDateLabel(lease.leaseEndDate)}</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-gray-100">
-                <span className="text-gray-500">Owner</span>
-                <div className="text-right">
-                  <p className="font-medium text-gray-900 inline-flex items-center gap-1"><CheckCircle2 size={12} className="text-emerald-600" />{lease.owner?.name}</p>
-                  <p className="text-xs text-gray-400 inline-flex items-center gap-1"><Mail size={11} />{lease.owner?.email}</p>
-                  {lease.owner?.phone && <p className="text-xs text-gray-400 inline-flex items-center gap-1"><Phone size={11} />{lease.owner?.phone}</p>}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-gray-100 bg-white text-center py-16 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
-          <Building2 size={48} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500 text-lg">No active lease found.</p>
-          <p className="text-gray-400 text-sm mt-1">Contact your property owner to be assigned a lease.</p>
-        </div>
-      )}
-
-      <Modal isOpen={docsModal} onClose={() => setDocsModal(false)} title="Upload Compliance Document">
-        <form onSubmit={uploadComplianceDoc} className="space-y-5">
-          {/* Header Info */}
-          <div className="rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-4">
-            <div className="flex gap-3">
-              <div className="p-2.5 bg-blue-100 rounded-lg h-fit">
-                <FileText size={18} className="text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 text-sm">Submit Important Documents</h3>
-                <p className="text-xs text-gray-600 mt-1">Upload your compliance documents for owner verification and records.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Main form fields */}
-          <div className="space-y-5">
-            {/* Document Type Section */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-2 inline-flex items-center gap-1.5">
-                <ShieldCheck size={15} className="text-emerald-600" />
-                Document Type *
-              </label>
-              <select
-                value={docForm.documentType}
-                onChange={(e) => setDocForm({ ...docForm, documentType: e.target.value })}
-                className="input-field w-full font-medium"
-              >
-                {DOC_TYPES.map((type) => <option key={type}>{type}</option>)}
-              </select>
-            </div>
-
-            {/* Document Number Section */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-2 inline-flex items-center gap-1.5">
-                <FileText size={15} className="text-blue-600" />
-                Document Number *
-              </label>
-              <input
-                value={docForm.documentNumber}
-                onChange={(e) => setDocForm({ ...docForm, documentNumber: e.target.value })}
-                className="input-field w-full"
-                placeholder="e.g., XXXXXXXX1234 or Agreement#2025"
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">Enter your Aadhaar, PAN, or Agreement number for reference</p>
-            </div>
-
-            {/* File Upload Section */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-3 inline-flex items-center gap-1.5">
-                <Upload size={15} className="text-cyan-600" />
-                Upload Document *
-              </label>
-              <label className="cursor-pointer block">
-                <div className="relative border-2 border-dashed border-gray-300 rounded-xl p-6 hover:border-blue-400 hover:bg-blue-50 transition-all bg-gray-50">
-                  <input
-                    type="file"
-                    accept="application/pdf,image/png,image/jpeg,image/webp"
-                    onChange={(e) => setDocForm({ ...docForm, document: e.target.files?.[0] || null })}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                    required
-                  />
-                  <div className="flex flex-col items-center justify-center text-center">
-                    <div className="p-3 bg-blue-100 rounded-lg mb-2">
-                      <Upload size={24} className="text-blue-600" />
-                    </div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {docForm.document ? docForm.document.name : "Click to upload or drag & drop"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {docForm.document
-                        ? `Size: ${(docForm.document.size / 1024 / 1024).toFixed(2)}MB`
-                        : "PDF, JPG, PNG, or WEBP • Max 10MB"}
-                    </p>
-                  </div>
-                </div>
-              </label>
-            </div>
-
-            {/* Notes Section */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-2 inline-flex items-center gap-1.5">
-                <ClipboardCheck size={15} className="text-purple-600" />
-                Notes or Comments
-              </label>
-              <textarea
-                rows={3}
-                value={docForm.notes}
-                onChange={(e) => setDocForm({ ...docForm, notes: e.target.value })}
-                className="input-field w-full resize-none"
-                placeholder="Add any special context, expiry dates, or notes for owner review (optional)"
-              />
-            </div>
-
-            {/* Info Box */}
-            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3.5 py-3 flex gap-2.5">
-              <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-amber-800">
-                <span className="font-semibold">Tip:</span> Upload clear, legible documents for faster verification. Owner will review and confirm receipt.
-              </p>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-2 justify-end pt-3 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={() => setDocsModal(false)}
-              className="px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={uploadingDoc || !docForm.document}
-              className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-semibold hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all inline-flex items-center gap-2 shadow-sm hover:shadow-md"
-            >
-              {uploadingDoc ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload size={16} />
-                  Upload Document
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal isOpen={moveOutModal} onClose={() => setMoveOutModal(false)} title="Request Move-Out">
-        {!lease ? (
-          <p className="text-sm text-gray-600">No active lease found. Move-out request is available only for active tenants.</p>
-        ) : (
-          <form onSubmit={handleMoveOutRequest} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Requested Move-Out Date</label>
-              <input
-                type="date"
-                required
-                value={moveOutForm.requestedMoveOutDate}
-                onChange={(e) => setMoveOutForm({ ...moveOutForm, requestedMoveOutDate: e.target.value })}
-                className="input-field"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason (Optional)</label>
-              <textarea
-                rows={3}
-                value={moveOutForm.reason}
-                onChange={(e) => setMoveOutForm({ ...moveOutForm, reason: e.target.value })}
-                className="input-field"
-                placeholder="Mention relocation, job change, purchase, or other context"
-              />
-            </div>
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-              After owner approval, you will see confirmed last staying day and closing formalities here.
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setMoveOutModal(false)} className="btn-secondary">Cancel</button>
-              <button type="submit" disabled={submittingMoveOut} className="btn-primary">
-                {submittingMoveOut ? "Submitting..." : "Submit Request"}
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
       </div>
     </div>
   );
