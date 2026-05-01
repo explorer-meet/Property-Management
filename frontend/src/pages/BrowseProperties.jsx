@@ -1,9 +1,61 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Building2, Home, MapPin, Search, SlidersHorizontal, Menu, X } from "lucide-react";
+import {
+  Building2, Home, MapPin, Search, SlidersHorizontal, Menu, X,
+  // Amenity icons
+  Waves, Dumbbell, Baby, Flower2, Car, ShieldCheck, Video, BatteryCharging,
+  ArrowUpDown, PersonStanding, Gamepad2, PhoneCall, Wifi, CloudRain,
+  Monitor, UserCheck, Coffee, Flame, Truck, Wind, Server, Zap, ConciergeBell, ParkingSquare,
+} from "lucide-react";
 import api from "../utils/api";
 import toast from "react-hot-toast";
 import { PropertyImageCarousel } from "../components/UI";
+
+// ─── Amenity Maps (mirrors Properties.jsx) ───────────────────────────────────
+const RESIDENTIAL_AMENITIES = [
+  { key: "swimmingPool",        label: "Swimming Pool",       icon: Waves          },
+  { key: "gymnasium",           label: "Gymnasium",           icon: Dumbbell       },
+  { key: "kidsPlayArea",        label: "Kids Play Area",      icon: Baby           },
+  { key: "garden",              label: "Garden / Gazebo",     icon: Flower2        },
+  { key: "coveredParking",      label: "Covered Parking",     icon: Car            },
+  { key: "visitorParking",      label: "Visitor Parking",     icon: ParkingSquare  },
+  { key: "security24x7",        label: "24/7 Security",       icon: ShieldCheck    },
+  { key: "cctv",                label: "CCTV Surveillance",   icon: Video          },
+  { key: "powerBackup",         label: "Power Backup",        icon: BatteryCharging},
+  { key: "elevator",            label: "Elevator / Lift",     icon: ArrowUpDown    },
+  { key: "clubhouse",           label: "Clubhouse",           icon: Building2      },
+  { key: "joggingTrack",        label: "Jogging Track",       icon: PersonStanding },
+  { key: "indoorGames",         label: "Indoor Games",        icon: Gamepad2       },
+  { key: "intercom",            label: "Intercom",            icon: PhoneCall      },
+  { key: "wifi",                label: "Wi-Fi Ready",         icon: Wifi           },
+  { key: "rainwaterHarvesting", label: "Rainwater Harvesting",icon: CloudRain      },
+];
+const COMMERCIAL_AMENITIES = [
+  { key: "parking",           label: "Parking",             icon: Car             },
+  { key: "conferenceRoom",    label: "Conference Room",     icon: Monitor         },
+  { key: "reception",         label: "Reception / Lobby",   icon: ConciergeBell   },
+  { key: "cafeteria",         label: "Cafeteria / Pantry",  icon: Coffee          },
+  { key: "powerBackup",       label: "Power Backup",        icon: BatteryCharging },
+  { key: "security24x7",      label: "24/7 Security",       icon: ShieldCheck     },
+  { key: "cctv",              label: "CCTV Surveillance",   icon: Video           },
+  { key: "elevator",          label: "Elevator / Lift",     icon: ArrowUpDown     },
+  { key: "highSpeedInternet", label: "High-Speed Internet", icon: Wifi            },
+  { key: "fireSafety",        label: "Fire Safety",         icon: Flame           },
+  { key: "generator",         label: "Generator",           icon: Zap             },
+  { key: "loadingDock",       label: "Loading Dock",        icon: Truck           },
+  { key: "airConditioning",   label: "Air Conditioning",    icon: Wind            },
+  { key: "serverRoom",        label: "Server Room",         icon: Server          },
+  { key: "restrooms",         label: "Dedicated Restrooms", icon: UserCheck       },
+];
+const RESIDENTIAL_TYPES = ["Home", "Flat"];
+
+const getPropertyAmenities = (property) => {
+  const amenMap = property.amenities instanceof Map
+    ? Object.fromEntries(property.amenities)
+    : (property.amenities || {});
+  const list = RESIDENTIAL_TYPES.includes(property.propertyType) ? RESIDENTIAL_AMENITIES : COMMERCIAL_AMENITIES;
+  return list.filter((a) => amenMap[a.key]);
+};
 
 const getStoredUser = () => {
   try {
@@ -255,6 +307,29 @@ const BrowseProperties = () => {
                         <p>Rooms: <span className="font-semibold text-gray-800">{property.numberOfRooms || 1}</span></p>
                         <p>Listed by: <span className="font-semibold text-gray-800">{property?.owner?.name || "Owner"}</span></p>
                       </div>
+
+                      {/* ── Amenities ── */}
+                      {(() => {
+                        const enabled = getPropertyAmenities(property);
+                        if (enabled.length === 0) return null;
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Amenities</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {enabled.slice(0, 8).map(({ key, label, icon: AIcon }) => (
+                                <span key={key} className="inline-flex items-center gap-1 text-[10px] font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-100">
+                                  <AIcon size={10} /> {label}
+                                </span>
+                              ))}
+                              {enabled.length > 8 && (
+                                <span className="inline-flex items-center text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                                  +{enabled.length - 8} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       <button
                         type="button"

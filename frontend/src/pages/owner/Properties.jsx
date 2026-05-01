@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -17,11 +17,77 @@ import {
   Hash,
   Navigation,
   LayoutDashboard,
+  // Amenity icons - Residential
+  Waves,
+  Dumbbell,
+  Baby,
+  Flower2,
+  Car,
+  ShieldCheck,
+  Video,
+  BatteryCharging,
+  ArrowUpDown,
+  PersonStanding,
+  Gamepad2,
+  PhoneCall,
+  Wifi,
+  CloudRain,
+  // Amenity icons - Commercial
+  Monitor,
+  UserCheck,
+  Coffee,
+  Flame,
+  Truck,
+  Wind,
+  Server,
+  Zap,
+  ConciergeBell,
+  ParkingSquare,
 } from "lucide-react";
 import { PageHeader, Modal, StatusBadge, EmptyState, PropertyImageCarousel } from "../../components/UI";
 import api from "../../utils/api";
 import toast from "react-hot-toast";
-import { resolvePropertyCoverImage } from "../../utils/propertyImages";
+
+// ─── Amenity Definitions ────────────────────────────────────────────────────
+const RESIDENTIAL_AMENITIES = [
+  { key: "swimmingPool",        label: "Swimming Pool",       icon: Waves,          color: "text-cyan-600",    bg: "bg-cyan-50",    ring: "ring-cyan-300"    },
+  { key: "gymnasium",           label: "Gymnasium",           icon: Dumbbell,       color: "text-violet-600",  bg: "bg-violet-50",  ring: "ring-violet-300"  },
+  { key: "kidsPlayArea",        label: "Kids Play Area",      icon: Baby,           color: "text-pink-600",    bg: "bg-pink-50",    ring: "ring-pink-300"    },
+  { key: "garden",              label: "Garden / Gazebo",     icon: Flower2,        color: "text-green-600",   bg: "bg-green-50",   ring: "ring-green-300"   },
+  { key: "coveredParking",      label: "Covered Parking",     icon: Car,            color: "text-blue-600",    bg: "bg-blue-50",    ring: "ring-blue-300"    },
+  { key: "visitorParking",      label: "Visitor Parking",     icon: ParkingSquare,  color: "text-indigo-600",  bg: "bg-indigo-50",  ring: "ring-indigo-300"  },
+  { key: "security24x7",        label: "24/7 Security",       icon: ShieldCheck,    color: "text-amber-600",   bg: "bg-amber-50",   ring: "ring-amber-300"   },
+  { key: "cctv",                label: "CCTV Surveillance",   icon: Video,          color: "text-slate-600",   bg: "bg-slate-50",   ring: "ring-slate-300"   },
+  { key: "powerBackup",         label: "Power Backup",        icon: BatteryCharging,color: "text-yellow-600",  bg: "bg-yellow-50",  ring: "ring-yellow-300"  },
+  { key: "elevator",            label: "Elevator / Lift",     icon: ArrowUpDown,    color: "text-teal-600",    bg: "bg-teal-50",    ring: "ring-teal-300"    },
+  { key: "clubhouse",           label: "Clubhouse",           icon: Building2,      color: "text-orange-600",  bg: "bg-orange-50",  ring: "ring-orange-300"  },
+  { key: "joggingTrack",        label: "Jogging Track",       icon: PersonStanding, color: "text-lime-600",    bg: "bg-lime-50",    ring: "ring-lime-300"    },
+  { key: "indoorGames",         label: "Indoor Games",        icon: Gamepad2,       color: "text-purple-600",  bg: "bg-purple-50",  ring: "ring-purple-300"  },
+  { key: "intercom",            label: "Intercom",            icon: PhoneCall,      color: "text-rose-600",    bg: "bg-rose-50",    ring: "ring-rose-300"    },
+  { key: "wifi",                label: "Wi-Fi Ready",         icon: Wifi,           color: "text-sky-600",     bg: "bg-sky-50",     ring: "ring-sky-300"     },
+  { key: "rainwaterHarvesting", label: "Rainwater Harvesting",icon: CloudRain,      color: "text-blue-500",    bg: "bg-blue-50",    ring: "ring-blue-300"    },
+];
+
+const COMMERCIAL_AMENITIES = [
+  { key: "parking",             label: "Parking",             icon: Car,            color: "text-blue-600",    bg: "bg-blue-50",    ring: "ring-blue-300"    },
+  { key: "conferenceRoom",      label: "Conference Room",     icon: Monitor,        color: "text-indigo-600",  bg: "bg-indigo-50",  ring: "ring-indigo-300"  },
+  { key: "reception",           label: "Reception / Lobby",   icon: ConciergeBell,  color: "text-amber-600",   bg: "bg-amber-50",   ring: "ring-amber-300"   },
+  { key: "cafeteria",           label: "Cafeteria / Pantry",  icon: Coffee,         color: "text-orange-600",  bg: "bg-orange-50",  ring: "ring-orange-300"  },
+  { key: "powerBackup",         label: "Power Backup",        icon: BatteryCharging,color: "text-yellow-600",  bg: "bg-yellow-50",  ring: "ring-yellow-300"  },
+  { key: "security24x7",        label: "24/7 Security",       icon: ShieldCheck,    color: "text-green-600",   bg: "bg-green-50",   ring: "ring-green-300"   },
+  { key: "cctv",                label: "CCTV Surveillance",   icon: Video,          color: "text-slate-600",   bg: "bg-slate-50",   ring: "ring-slate-300"   },
+  { key: "elevator",            label: "Elevator / Lift",     icon: ArrowUpDown,    color: "text-teal-600",    bg: "bg-teal-50",    ring: "ring-teal-300"    },
+  { key: "highSpeedInternet",   label: "High-Speed Internet", icon: Wifi,           color: "text-sky-600",     bg: "bg-sky-50",     ring: "ring-sky-300"     },
+  { key: "fireSafety",          label: "Fire Safety",         icon: Flame,          color: "text-red-600",     bg: "bg-red-50",     ring: "ring-red-300"     },
+  { key: "generator",           label: "Generator",           icon: Zap,            color: "text-violet-600",  bg: "bg-violet-50",  ring: "ring-violet-300"  },
+  { key: "loadingDock",         label: "Loading Dock",        icon: Truck,          color: "text-brown-600",   bg: "bg-stone-50",   ring: "ring-stone-300"   },
+  { key: "airConditioning",     label: "Air Conditioning",    icon: Wind,           color: "text-cyan-600",    bg: "bg-cyan-50",    ring: "ring-cyan-300"    },
+  { key: "serverRoom",          label: "Server Room",         icon: Server,         color: "text-gray-600",    bg: "bg-gray-50",    ring: "ring-gray-300"    },
+  { key: "restrooms",           label: "Dedicated Restrooms", icon: UserCheck,      color: "text-pink-600",    bg: "bg-pink-50",    ring: "ring-pink-300"    },
+];
+
+const RESIDENTIAL_TYPES = ["Home", "Flat"];
+
 
 const PROPERTY_TYPES = [
   { label: "Home",   icon: Home,      color: "blue",   grad: "from-blue-500 to-indigo-600"   },
@@ -42,6 +108,7 @@ const emptyForm = {
   address: { street: "", city: "", state: "", pincode: "" },
   description: "",
   numberOfRooms: 1,
+  amenities: {},
 };
 
 const Properties = () => {
@@ -80,6 +147,7 @@ const Properties = () => {
       address: { ...p.address },
       description: p.description || "",
       numberOfRooms: p.numberOfRooms,
+      amenities: p.amenities ? (p.amenities instanceof Map ? Object.fromEntries(p.amenities) : { ...p.amenities }) : {},
     });
     setEditingId(p._id);
     setPhotoFiles([]);
@@ -90,9 +158,18 @@ const Properties = () => {
     const { name, value } = e.target;
     if (["street", "city", "state", "pincode"].includes(name)) {
       setForm((f) => ({ ...f, address: { ...f.address, [name]: value } }));
+    } else if (name === "propertyType") {
+      // Reset amenities when property type category changes (residential ↔ commercial)
+      const wasResidential = RESIDENTIAL_TYPES.includes(form.propertyType);
+      const isNowResidential = RESIDENTIAL_TYPES.includes(value);
+      setForm((f) => ({ ...f, propertyType: value, amenities: wasResidential !== isNowResidential ? {} : f.amenities }));
     } else {
       setForm((f) => ({ ...f, [name]: value }));
     }
+  };
+
+  const toggleAmenity = (key) => {
+    setForm((f) => ({ ...f, amenities: { ...f.amenities, [key]: !f.amenities[key] } }));
   };
 
   const handleSave = async (e) => {
@@ -290,6 +367,30 @@ const Properties = () => {
                       {p.numberOfRooms} room{p.numberOfRooms !== 1 ? "s" : ""}
                     </span>
                   </div>
+                  {/* Amenities summary */}
+                  {(() => {
+                    const amenMap = p.amenities instanceof Map ? Object.fromEntries(p.amenities) : (p.amenities || {});
+                    const amenList = RESIDENTIAL_TYPES.includes(p.propertyType) ? RESIDENTIAL_AMENITIES : COMMERCIAL_AMENITIES;
+                    const enabled = amenList.filter((a) => amenMap[a.key]);
+                    if (enabled.length === 0) return null;
+                    return (
+                      <div className="mb-4">
+                        <p className="text-xs text-gray-400 mb-1.5 font-medium">Amenities ({enabled.length})</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {enabled.slice(0, 6).map(({ key, label, icon: AIcon, color, bg }) => (
+                            <span key={key} className={`inline-flex items-center gap-1 text-[10px] font-semibold ${bg} ${color} px-2 py-0.5 rounded-full`}>
+                              <AIcon size={10} /> {label}
+                            </span>
+                          ))}
+                          {enabled.length > 6 && (
+                            <span className="inline-flex items-center text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                              +{enabled.length - 6} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
                     <button
                       onClick={() => navigate(`/owner/properties/${p._id}/manage`)}
@@ -312,160 +413,182 @@ const Properties = () => {
       )}
 
       {/* ── ADD / EDIT MODAL ── */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? "Edit Property" : "Add New Property"}>
-        <form onSubmit={handleSave} className="space-y-5">
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? "Edit Property" : "Add New Property"} size="3xl">
+        <form onSubmit={handleSave}>
 
           {/* Dynamic header banner */}
-          <div className={`-mx-6 -mt-5 px-6 py-5 bg-gradient-to-r ${selectedTypeMeta.grad} flex items-center gap-4`}>
-            <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center ring-2 ring-white/30 shrink-0">
-              <SelectedTypeIcon size={28} className="text-white" />
+          <div className={`-mx-6 -mt-5 px-8 py-6 bg-gradient-to-r ${selectedTypeMeta.grad} flex items-center gap-5`}>
+            <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center ring-2 ring-white/30 shrink-0">
+              <SelectedTypeIcon size={32} className="text-white" />
             </div>
             <div>
               <p className="text-white/70 text-xs font-semibold uppercase tracking-widest">
                 {editingId ? "Editing" : "New"} Property
               </p>
-              <p className="text-white font-extrabold text-xl leading-tight">{form.propertyType}</p>
+              <p className="text-white font-extrabold text-2xl leading-tight">{form.propertyType}</p>
               {form.address.city && (
-                <p className="text-white/80 text-xs mt-0.5 flex items-center gap-1">
-                  <MapPin size={11} /> {form.address.city}{form.address.state ? `, ${form.address.state}` : ""}
+                <p className="text-white/80 text-sm mt-0.5 flex items-center gap-1">
+                  <MapPin size={13} /> {form.address.city}{form.address.state ? `, ${form.address.state}` : ""}
                 </p>
               )}
             </div>
           </div>
 
-          {/* Property Type — icon card selector */}
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Property Type</label>
-            <div className="grid grid-cols-4 gap-2">
-              {PROPERTY_TYPES.map(({ label, icon: TypeIcon, grad }) => {
-                const selected = form.propertyType === label;
-                const tc = TYPE_COLORS[label];
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, propertyType: label }))}
-                    className={`flex flex-col items-center gap-2 rounded-2xl border-2 py-3.5 px-2 transition-all duration-200 cursor-pointer
-                      ${selected
-                        ? `border-transparent bg-gradient-to-br ${grad} shadow-lg scale-105`
-                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
-                      }`}
-                  >
-                    <TypeIcon size={22} className={selected ? "text-white" : tc.text} />
-                    <span className={`text-xs font-bold ${selected ? "text-white" : "text-gray-600"}`}>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Two-column body */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-6">
 
-          {/* Address section */}
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Location Details</label>
-            <div className="space-y-3">
-              <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all duration-200">
-                <span className="px-3 text-gray-400 shrink-0">
-                  <Navigation size={15} />
-                </span>
-                <input
-                  type="text"
-                  name="street"
-                  value={form.address.street}
-                  onChange={handleChange}
-                  required
-                  placeholder="Street Address"
-                  className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all duration-200">
-                  <span className="px-3 text-gray-400 shrink-0">
-                    <MapPin size={15} />
-                  </span>
-                  <input
-                    type="text"
-                    name="city"
-                    value={form.address.city}
-                    onChange={handleChange}
-                    required
-                    placeholder="City"
-                    className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400"
-                  />
-                </div>
-                <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all duration-200">
-                  <span className="px-3 text-gray-400 shrink-0">
-                    <MapPin size={15} />
-                  </span>
-                  <input
-                    type="text"
-                    name="state"
-                    value={form.address.state}
-                    onChange={handleChange}
-                    required
-                    placeholder="State"
-                    className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400"
-                  />
-                </div>
-                <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all duration-200">
-                  <span className="px-3 text-gray-400 shrink-0">
-                    <Hash size={15} />
-                  </span>
-                  <input
-                    type="text"
-                    name="pincode"
-                    value={form.address.pincode}
-                    onChange={handleChange}
-                    placeholder="Pincode"
-                    inputMode="numeric"
-                    className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400"
-                  />
-                </div>
-                <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all duration-200">
-                  <span className="px-3 text-gray-400 shrink-0">
-                    <DoorOpen size={15} />
-                  </span>
-                  <input
-                    type="number"
-                    name="numberOfRooms"
-                    value={form.numberOfRooms}
-                    onChange={handleChange}
-                    min={1}
-                    placeholder="Rooms / Units"
-                    className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400"
-                  />
+            {/* ── LEFT COLUMN ── */}
+            <div className="space-y-5">
+
+              {/* Property Type */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Property Type</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {PROPERTY_TYPES.map(({ label, icon: TypeIcon, grad }) => {
+                    const selected = form.propertyType === label;
+                    const tc = TYPE_COLORS[label];
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => handleChange({ target: { name: "propertyType", value: label } })}
+                        className={`flex flex-col items-center gap-2 rounded-2xl border-2 py-3.5 px-2 transition-all duration-200 cursor-pointer
+                          ${selected
+                            ? `border-transparent bg-gradient-to-br ${grad} shadow-lg scale-105`
+                            : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                      >
+                        <TypeIcon size={22} className={selected ? "text-white" : tc.text} />
+                        <span className={`text-xs font-bold ${selected ? "text-white" : "text-gray-600"}`}>{label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+
+              {/* Address */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Location Details</label>
+                <div className="space-y-3">
+                  <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all">
+                    <span className="px-3 text-gray-400 shrink-0"><Navigation size={15} /></span>
+                    <input type="text" name="street" value={form.address.street} onChange={handleChange} required
+                      placeholder="Street Address"
+                      className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all">
+                      <span className="px-3 text-gray-400 shrink-0"><MapPin size={15} /></span>
+                      <input type="text" name="city" value={form.address.city} onChange={handleChange} required
+                        placeholder="City"
+                        className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400" />
+                    </div>
+                    <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all">
+                      <span className="px-3 text-gray-400 shrink-0"><MapPin size={15} /></span>
+                      <input type="text" name="state" value={form.address.state} onChange={handleChange} required
+                        placeholder="State"
+                        className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400" />
+                    </div>
+                    <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all">
+                      <span className="px-3 text-gray-400 shrink-0"><Hash size={15} /></span>
+                      <input type="text" name="pincode" value={form.address.pincode} onChange={handleChange}
+                        placeholder="Pincode" inputMode="numeric"
+                        className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400" />
+                    </div>
+                    <div className="flex items-center rounded-xl border border-gray-200 bg-white focus-within:ring-2 focus-within:ring-indigo-400/40 focus-within:border-indigo-400 transition-all">
+                      <span className="px-3 text-gray-400 shrink-0"><DoorOpen size={15} /></span>
+                      <input type="number" name="numberOfRooms" value={form.numberOfRooms} onChange={handleChange} min={1}
+                        placeholder="Rooms / Units"
+                        className="w-full rounded-r-xl px-3.5 py-2.5 text-sm text-gray-800 bg-transparent outline-none placeholder:text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
+                  <span className="flex items-center gap-1.5"><FileText size={13} /> Description <span className="normal-case font-normal text-gray-400">(optional)</span></span>
+                </label>
+                <textarea name="description" value={form.description} onChange={handleChange}
+                  rows={4} placeholder="Describe the property — highlights, rules…"
+                  className="input-field resize-none w-full" />
+              </div>
+
+              {/* Photos */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Property Photos (optional)</label>
+                <label className="flex items-center gap-3 cursor-pointer rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-indigo-50 hover:border-indigo-300 px-4 py-3 transition-all">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                    <FileText size={15} className="text-indigo-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-700">
+                      {photoFiles.length > 0 ? `${photoFiles.length} file(s) selected` : "Click to upload photos"}
+                    </p>
+                    <p className="text-xs text-gray-400">PNG, JPG, WEBP — uploaded on save</p>
+                  </div>
+                  <input type="file" multiple accept="image/*"
+                    onChange={(e) => setPhotoFiles(Array.from(e.target.files || []))}
+                    className="sr-only" />
+                </label>
+              </div>
             </div>
-          </div>
 
-          {/* Description */}
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-              <span className="flex items-center gap-1.5"><FileText size={13} /> Description <span className="normal-case font-normal text-gray-400">(optional)</span></span>
-            </label>
-            <textarea
-              name="description" value={form.description} onChange={handleChange}
-              rows={3} placeholder="Describe the property — amenities, highlights, rules…"
-              className="input-field resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Property Photos (optional)</label>
-            <input
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(e) => setPhotoFiles(Array.from(e.target.files || []))}
-              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-            />
-            <p className="mt-1 text-xs text-gray-500">{photoFiles.length} file(s) selected. Images upload when you save property.</p>
+            {/* ── RIGHT COLUMN — Amenities ── */}
+            {(() => {
+              const isResidential = RESIDENTIAL_TYPES.includes(form.propertyType);
+              const amenityList = isResidential ? RESIDENTIAL_AMENITIES : COMMERCIAL_AMENITIES;
+              const enabledCount = amenityList.filter((a) => form.amenities[a.key]).length;
+              return (
+                <div className="flex flex-col lg:border-l lg:border-gray-100 lg:pl-6">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Amenities</label>
+                    <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded-full">
+                      {enabledCount} / {amenityList.length} on
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-3">
+                    Toggle available amenities for this {isResidential ? "residential" : "commercial"} property.
+                  </p>
+                  <div className="flex-1 overflow-y-auto max-h-[440px] pr-0.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {amenityList.map(({ key, label, icon: AmenityIcon, color, bg }) => {
+                        const active = Boolean(form.amenities[key]);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => toggleAmenity(key)}
+                            className={`relative flex flex-col items-center gap-1.5 rounded-xl border-2 px-2 py-3 text-center transition-colors duration-150 cursor-pointer select-none w-full
+                              ${active
+                                ? `${bg} border-current ${color} shadow-sm`
+                                : "border-gray-200 bg-white text-gray-400 hover:border-gray-300 hover:bg-gray-50"
+                              }`}
+                          >
+                            {active && (
+                              <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+                                <CheckCircle2 size={10} className="text-white" />
+                              </span>
+                            )}
+                            <AmenityIcon size={20} className={active ? color : "text-gray-400"} />
+                            <span className={`text-[10px] font-semibold leading-tight ${active ? "text-gray-800" : "text-gray-500"}`}>
+                              {label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-1 border-t border-gray-100">
-            <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary px-5">Cancel</button>
-            <button type="submit" disabled={saving} className={`btn-primary px-6 flex items-center gap-2 bg-gradient-to-r ${selectedTypeMeta.grad} shadow-lg`}>
+          <div className="flex justify-end gap-3 pt-5 mt-4 border-t border-gray-100">
+            <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary px-6">Cancel</button>
+            <button type="submit" disabled={saving} className={`btn-primary px-7 flex items-center gap-2 bg-gradient-to-r ${selectedTypeMeta.grad} shadow-lg`}>
               {saving ? (
                 <>
                   <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">

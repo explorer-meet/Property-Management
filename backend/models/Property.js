@@ -28,6 +28,7 @@ const propertySchema = new mongoose.Schema(
       enum: ["Active", "Inactive", "Archived", "Deleted"],
       default: "Active",
     },
+    amenities: { type: Map, of: Boolean, default: {} },
   },
   { timestamps: true }
 );

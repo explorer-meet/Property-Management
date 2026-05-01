@@ -1117,7 +1117,7 @@ const uploadProfilePicture = async (req, res) => {
 
 const addProperty = async (req, res) => {
   try {
-    const { propertyType, address, description, numberOfRooms } = req.body;
+    const { propertyType, address, description, numberOfRooms, amenities } = req.body;
     if (!propertyType || !address || !address.street || !address.city || !address.state) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "Property type and address are required." });
     }
@@ -1127,6 +1127,7 @@ const addProperty = async (req, res) => {
       address,
       description,
       numberOfRooms,
+      amenities: amenities && typeof amenities === "object" ? amenities : {},
     });
     res.status(StatusCodes.CREATED).json({ message: "Property added.", property });
   } catch (err) {
@@ -1178,10 +1179,12 @@ const getPropertyById = async (req, res) => {
 
 const updateProperty = async (req, res) => {
   try {
-    const { propertyType, address, description, numberOfRooms } = req.body;
+    const { propertyType, address, description, numberOfRooms, amenities } = req.body;
+    const update = { propertyType, address, description, numberOfRooms };
+    if (amenities && typeof amenities === "object") update.amenities = amenities;
     const property = await Property.findOneAndUpdate(
       { _id: req.params.id, owner: req.user.userId },
-      { propertyType, address, description, numberOfRooms },
+      update,
       { new: true, runValidators: true }
     );
     if (!property) return res.status(StatusCodes.NOT_FOUND).json({ message: "Property not found." });
