@@ -50,7 +50,7 @@ const VendorRegister = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(135deg,#f0fdf4_0%,#f8fafc_50%,#ecfeff_100%)] lg:grid lg:grid-cols-2 overflow-hidden">
+    <div className="min-h-dvh bg-[linear-gradient(135deg,#f0fdf4_0%,#f8fafc_50%,#ecfeff_100%)] overflow-x-hidden lg:grid lg:min-h-screen lg:grid-cols-2 lg:overflow-hidden">
       {/* Left panel */}
       <div className="relative hidden lg:flex flex-col justify-center overflow-hidden bg-[linear-gradient(145deg,#0f172a_0%,#065f46_62%,#0f766e_100%)] px-10 py-10 xl:px-12">
         <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:24px_24px] opacity-60" />

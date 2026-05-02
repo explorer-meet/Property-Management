@@ -85,7 +85,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(135deg,#eff6ff_0%,#f8fafc_50%,#ecfeff_100%)] lg:grid lg:grid-cols-2 overflow-hidden">
+    <div className="min-h-dvh bg-[linear-gradient(135deg,#eff6ff_0%,#f8fafc_50%,#ecfeff_100%)] overflow-x-hidden lg:grid lg:min-h-screen lg:grid-cols-2 lg:overflow-hidden">
 
       <div className="relative hidden lg:flex flex-col justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.22),transparent_32%),linear-gradient(145deg,#0f172a_0%,#1d4ed8_62%,#0f766e_100%)] px-10 py-10 xl:px-12">
         <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.07)_1px,transparent_1px)] bg-[size:24px_24px] opacity-70" />
@@ -130,7 +130,7 @@ const Login = () => {
         </div>
       </div>
 
-      <div className="relative flex items-center justify-center px-5 py-6 sm:px-8 lg:px-10">
+      <div className="relative flex min-h-dvh items-start justify-center px-5 py-6 sm:px-8 lg:min-h-0 lg:items-center lg:px-10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.10),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(20,184,166,0.08),transparent_26%)]" />
 
         <div className="relative w-full max-w-md">

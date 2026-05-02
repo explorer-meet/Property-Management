@@ -417,7 +417,7 @@ const OwnerDashboard = () => {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_26%),radial-gradient(circle_at_85%_8%,_rgba(251,146,60,0.14),_transparent_22%),linear-gradient(180deg,_#f5f7fb_0%,_#f8fafc_38%,_#f2f6fb_100%)] pb-10">
+    <div className="relative min-h-dvh overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(8,145,178,0.16),_transparent_26%),radial-gradient(circle_at_85%_8%,_rgba(251,146,60,0.14),_transparent_22%),linear-gradient(180deg,_#f5f7fb_0%,_#f8fafc_38%,_#f2f6fb_100%)] pb-10 lg:min-h-screen">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[linear-gradient(135deg,rgba(15,23,42,0.04),rgba(255,255,255,0))]" />
       <div className="relative z-10 mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
         <section className="relative overflow-hidden rounded-[32px] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] px-5 py-5 text-white shadow-[0_24px_56px_rgba(15,23,42,0.20)] sm:px-6 sm:py-6">

@@ -23,28 +23,28 @@ const Layout = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-blue-100 via-purple-50 to-indigo-150">
+    <div className="flex min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-100 via-purple-50 to-indigo-150">
       <Sidebar />
-      <main className="relative flex-1 overflow-auto">
+      <main className="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute top-0 right-0 h-[26rem] w-[26rem] rounded-full bg-blue-400/20 blur-3xl animate-blob" />
           <div className="absolute bottom-0 left-0 h-[24rem] w-[24rem] rounded-full bg-purple-400/20 blur-3xl animate-blob-delay" />
         </div>
         
         {/* Top Right Navigation Bar */}
-        <div className="sticky top-0 right-0 z-40 bg-gradient-to-b from-white/60 to-transparent backdrop-blur-sm border-b border-white/40">
-          <div className="flex justify-end items-center gap-3 px-6 lg:px-8 py-3">
+        <div className="sticky top-0 right-0 z-40 border-b border-white/40 bg-gradient-to-b from-white/60 to-transparent backdrop-blur-sm">
+          <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3 sm:gap-3 sm:px-6 lg:px-8">
             <button
               onClick={() => {
                 navigate("/");
               }}
-              className="group px-4 py-2 rounded-lg border border-slate-200 bg-gradient-to-r from-slate-50 to-white text-sm font-medium text-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200 active:scale-95"
+              className="group rounded-lg border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md active:scale-95 sm:px-4 sm:text-sm"
             >
               Back to Home
             </button>
             <button
               onClick={() => setLogoutModalOpen(true)}
-              className="group px-4 py-2 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-50 to-red-50 text-sm font-medium text-rose-700 shadow-sm hover:shadow-md hover:border-rose-300 hover:bg-gradient-to-r hover:from-rose-100 hover:to-red-100 transition-all duration-200 active:scale-95 flex items-center gap-2"
+              className="group flex items-center gap-2 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-50 to-red-50 px-3 py-2 text-xs font-medium text-rose-700 shadow-sm transition-all duration-200 hover:border-rose-300 hover:bg-gradient-to-r hover:from-rose-100 hover:to-red-100 hover:shadow-md active:scale-95 sm:px-4 sm:text-sm"
             >
               <LogOut size={16} className="text-rose-600" />
               <span>Logout</span>
@@ -52,7 +52,7 @@ const Layout = () => {
           </div>
         </div>
 
-        <div className="relative p-6 lg:p-8 max-w-[1400px] mx-auto">
+        <div className="relative mx-auto max-w-[1400px] p-4 sm:p-6 lg:p-8">
           <Outlet />
         </div>
       </main>
@@ -74,7 +74,7 @@ const Layout = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={() => setLogoutModalOpen(false)}

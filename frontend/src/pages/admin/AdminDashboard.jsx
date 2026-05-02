@@ -372,7 +372,7 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50 to-blue-50 flex flex-col">
+    <div className="flex min-h-dvh flex-col overflow-x-hidden bg-gradient-to-br from-slate-100 via-indigo-50 to-blue-50 lg:h-screen lg:overflow-hidden">
       {/* ── Top Bar ─────────────────────────────────────────────── */}
       <header className="sticky top-0 z-30 border-b border-indigo-100/80 bg-white/80 backdrop-blur-md shadow-sm">
         <div className="h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4 max-w-screen-2xl mx-auto">

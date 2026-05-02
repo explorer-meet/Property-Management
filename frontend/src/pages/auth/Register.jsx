@@ -104,7 +104,7 @@ const Register = () => {
   };
 
   return (
-    <div className="h-screen bg-[linear-gradient(135deg,#ecfeff_0%,#f8fafc_45%,#eef2ff_100%)] lg:grid lg:grid-cols-[0.92fr_1.08fr] overflow-hidden">
+    <div className="min-h-dvh bg-[linear-gradient(135deg,#ecfeff_0%,#f8fafc_45%,#eef2ff_100%)] overflow-x-hidden lg:grid lg:min-h-screen lg:grid-cols-[0.92fr_1.08fr] lg:overflow-hidden">
       <div className="relative hidden lg:flex flex-col justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_32%),linear-gradient(150deg,#082f49_0%,#0f766e_56%,#1d4ed8_100%)] px-10 py-10 xl:px-12">
         <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.07)_1px,transparent_1px)] bg-[size:24px_24px] opacity-70" />
         <div className="absolute -top-20 right-0 h-56 w-56 rounded-full bg-cyan-300/18 blur-3xl" />
@@ -148,7 +148,7 @@ const Register = () => {
         </div>
       </div>
 
-      <div className="relative flex items-center justify-center px-5 py-4 sm:px-8 lg:px-10 h-full overflow-y-auto">
+      <div className="relative flex min-h-dvh items-start justify-center overflow-y-visible px-5 py-6 sm:px-8 sm:py-8 lg:h-full lg:min-h-0 lg:items-center lg:overflow-y-auto lg:px-10 lg:py-4">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.10),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.08),transparent_28%)]" />
 
         <div className="relative w-full max-w-3xl">
@@ -177,7 +177,7 @@ const Register = () => {
               <p className="mt-2 text-sm leading-6 text-slate-500">Fill in your details and start using the platform.</p>
             </div>
 
-            <div className="mb-4 grid grid-cols-2 gap-3">
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {[
                 { value: "owner", label: "Property Owner", sub: "Manage properties" },
                 { value: "tenant", label: "Tenant", sub: "View lease details" },
@@ -227,7 +227,7 @@ const Register = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">Mobile Number</label>
-                      <div className="grid grid-cols-[130px_1fr] gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[130px_1fr]">
                         <select
                           name="countryCode"
                           value={form.countryCode}
